@@ -1,0 +1,515 @@
+@import "./tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'IBM Plex Mono', monospace;
+  background-color: var(--color-background-surface1);
+  color: var(--color-foreground-primary);
+}
+
+:root {
+  --col-lapno: 52px;
+  --col-posdiff: 64px;
+  --col-laptime: 86px;
+  --col-ahead: 74px;
+  --col-tyre: 64px;
+  --col-stops: 56px;
+  --col-pit: 88px;
+  --col-valid: 64px;
+  --col-driver-max: 220px;
+}
+
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 24px;
+  position: relative;
+}
+
+.header-topright {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.header-title {
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 14px;
+}
+
+.header-subtitle {
+  font-weight: 300;
+  font-size: 12px;
+  color: var(--color-foreground-secondary);
+}
+
+.header-status {
+  font-size: 11px;
+  margin-top: 0;
+  padding: 4px 8px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.header-mode {
+  font-size: 11px;
+  color: var(--color-foreground-secondary);
+}
+
+#connection-status {
+  padding-left: 0px;
+  padding-right: 0px;
+}
+
+.header-status.status-connected {
+  color: var(--color-foreground-success);
+}
+
+.header-status.status-disconnected {
+  color: var(--color-foreground-danger);
+}
+
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.metric {
+  flex: 1 1 160px;
+  background-color: var(--color-background-surface2);
+  padding: 12px 12px 10px;
+}
+
+.metric-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-foreground-secondary);
+  margin-bottom: 8px;
+}
+
+.metric-value {
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.metric-sub {
+  font-size: 11px;
+  color: var(--color-foreground-secondary);
+  margin-left: 6px;
+}
+
+.race-hud-row {
+  display: none;
+  margin: 0px 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-primary);
+  background: var(--color-background-surface1);
+  gap: 24px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mode-race .race-hud-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.race-hud-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.race-hud-label {
+  color: var(--color-foreground-secondary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.race-hud-value {
+  color: var(--color-foreground-primary);
+  font-size: 13px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.team-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.tab {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  cursor: pointer;
+  border: 1px solid var(--color-border-primary);
+  background-color: var(--color-background-surface2);
+  color: var(--color-foreground-secondary);
+}
+
+.tab.is-active {
+  background-color: var(--color-background-surface3);
+  color: var(--color-foreground-primary);
+}
+
+.tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.table-section {
+  border: 1px solid var(--color-border-primary);
+}
+
+.table-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border-primary);
+}
+
+.table-title {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-foreground-secondary);
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.laps-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+  font-variant-numeric: tabular-nums;
+}
+
+.laps-table th,
+.laps-table td {
+  min-width: max-content;
+}
+
+.laps-table thead {
+  background-color: var(--color-background-surface2);
+}
+
+.laps-table th,
+.laps-table td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Fixed/narrow columns; rest auto-fit content */
+.col-lapno {
+  width: var(--col-lapno);
+}
+
+.col-posdiff {
+  width: var(--col-posdiff);
+}
+
+.col-tyre {
+  width: var(--col-tyre);
+}
+
+.col-stops {
+  width: var(--col-stops);
+  text-align: center;
+}
+
+.col-pit {
+  width: var(--col-pit);
+  text-overflow: clip;
+  text-align: left;
+}
+
+.col-valid {
+  width: var(--col-valid); /* 'Valid' */
+}
+
+.col-laptime {
+  width: var(--col-laptime);
+}
+
+.col-ahead {
+  width: var(--col-ahead);
+}
+
+.col-driver {
+  max-width: var(--col-driver-max);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.laps-table th {
+  font-weight: 400;
+  color: var(--color-foreground-secondary);
+  font-size: 11px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border-primary);
+  background-color: var(--color-background-surface3);
+  color: var(--color-foreground-primary);
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.badge-tyre {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: none;
+}
+
+.tyre-stack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.badge-tyre.layered {
+  position: relative;
+  margin-left: -12px;
+  outline: 2px solid var(--color-background-surface1);
+}
+
+.badge-tyre.layered:first-child {
+  margin-left: 0;
+}
+
+/* Подсветка шин в выделенной строке (машина игрока) */
+.laps-table tbody tr.race-player .badge-tyre {
+  outline: 2px solid var(--color-background-surface3);
+}
+
+.badge-pit {
+  width: 100%;
+  justify-content: flex-start;
+  border: none;
+  background: transparent;
+  padding: 0;
+  letter-spacing: 0;
+  text-overflow: clip;
+}
+
+.tyre-s {
+  background-color: var(--color-tyre-soft);
+  color: var(--color-tyre-soft-text);
+}
+
+.tyre-m {
+  background-color: var(--color-tyre-medium);
+  color: var(--color-tyre-medium-text);
+}
+
+.tyre-h {
+  background-color: var(--color-tyre-hard);
+  color: var(--color-tyre-hard-text);
+}
+
+.tyre-i {
+  background-color: var(--color-tyre-inter);
+  color: var(--color-tyre-inter-text);
+}
+
+.tyre-w {
+  background-color: var(--color-tyre-wet);
+  color: var(--color-tyre-wet-text);
+}
+
+.laps-table tbody tr.live-lap {
+  background-color: var(--color-background-surface2);
+}
+
+/* In race mode Valid is not needed */
+.mode-race .col-valid {
+  display: none;
+}
+
+/* Table switcher */
+.table-race {
+  display: none;
+}
+
+.view-race .table-race {
+  display: block;
+}
+
+.view-race .table-section:not(.table-race) {
+  display: none;
+}
+
+.table-car {
+  display: none;
+}
+
+.view-car .table-car {
+  display: block;
+}
+
+.view-car .table-section:not(.table-car) {
+  display: none;
+}
+
+.car-kv {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 24px;
+  padding: 12px;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.car-section {
+  grid-column: 1 / -1;
+  margin-top: 12px;
+}
+
+.car-section:first-child {
+  margin-top: 0;
+}
+
+.car-section-title {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-foreground-secondary);
+  margin: 0 0 6px;
+}
+
+.car-section-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 24px;
+}
+
+.car-kv .kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.car-kv .k {
+  color: var(--color-foreground-secondary);
+}
+
+.car-kv .v {
+  color: var(--color-foreground-primary);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.laps-table tbody tr:nth-child(even) {
+  background-color: var(--color-background-surface1);
+}
+
+/* Highlight player row in Race table (must be after nth-child(even) to win) */
+.laps-table tbody tr.race-player {
+  background-color: var(--color-background-surface3);
+}
+
+.laps-table tbody tr.invalid {
+  color: var(--color-foreground-danger-muted);
+}
+
+/* best lap highlight is handled via Delta label (see app.js) */
+
+.laps-table td.delta-positive {
+  color: var(--color-foreground-danger);
+}
+
+.laps-table td.delta-negative {
+  color: var(--color-foreground-success);
+}
+
+.laps-table td.best-sector {
+  color: var(--color-foreground-accent);
+}
+
+.status-bar {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--color-foreground-quaternary);
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 16px 10px 32px;
+  }
+
+  .metric-value {
+    font-size: 18px;
+  }
+}
+
+
+
+

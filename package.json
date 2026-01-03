@@ -1,0 +1,21 @@
+{
+  "name": "f1-25-telemetry-viewer",
+  "version": "0.1.0",
+  "description": "F1 25 telemetry viewer (laps, live time, best time, lap table)",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "demo": "DEMO=1 node backend/server.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
+
+
+
+
+
+

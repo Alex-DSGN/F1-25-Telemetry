@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>F1 25 Telemetry — Laps</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&display=swap"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <div class="header-title">F1 25 Telemetry</div>
+        <div class="header-subtitle">Laps overview</div>
+        <div class="header-topright">
+          <div class="header-status" id="connection-status">Disconnected</div>
+          <div class="header-mode" id="session-mode">—</div>
+        </div>
+      </header>
+
+      <section class="metrics">
+        <div class="metric">
+          <div class="metric-label">Live lap</div>
+          <div class="metric-value" id="live-lap-time">--:--.--- </div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Best lap (personal)</div>
+          <div class="metric-value">
+            <span id="best-lap-time">--:--.---</span>
+            <span class="metric-sub" id="best-lap-number"></span>
+          </div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Best lap (overall)</div>
+          <div class="metric-value">
+            <span id="overall-best-lap-time">--:--.---</span>
+            <span class="metric-sub" id="overall-best-lap-number"></span>
+          </div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Delta vs best</div>
+          <div class="metric-value" id="live-delta-best">--.--</div>
+        </div>
+      </section>
+
+      <div class="race-hud-row" id="race-hud-row">
+        <div class="race-hud-item">
+          <span class="race-hud-label">Fuel</span>
+          <span class="race-hud-value" id="race-fuel-delta">—</span>
+        </div>
+        <div class="race-hud-item">
+          <span class="race-hud-label">ERS</span>
+          <span class="race-hud-value" id="race-ers">—</span>
+        </div>
+        <div class="race-hud-item">
+          <span class="race-hud-label">Penalties</span>
+          <span class="race-hud-value" id="race-penalties">—</span>
+        </div>
+      </div>
+
+      <div class="tabs" id="tables-tabs">
+        <button class="tab is-active" id="tab-race" type="button">Race</button>
+        <button class="tab" id="tab-personal" type="button">Personal</button>
+        <button class="tab" id="tab-car" type="button">Car</button>
+      </div>
+
+      <section class="table-section">
+        <div class="table-header">
+          <div class="table-title">Laps</div>
+        </div>
+        <div class="table-wrapper">
+          <table class="laps-table">
+            <thead>
+              <tr>
+                <th class="col-lapno">#</th>
+                <th>Lap time</th>
+                <th>Delta</th>
+                <th class="col-tyre">Tyre</th>
+                <th class="col-stops">Stops</th>
+                <th class="col-pit">Pit</th>
+                <th>S1</th>
+                <th>S2</th>
+                <th>S3</th>
+                <th class="col-valid">Valid</th>
+              </tr>
+            </thead>
+            <tbody id="laps-tbody">
+              <!-- Rows will be filled by app.js -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="table-section table-race" id="table-race">
+        <div class="table-header">
+          <div class="table-title">Race</div>
+        </div>
+        <div class="table-wrapper">
+          <table class="laps-table">
+            <thead>
+              <tr>
+                <th class="col-lapno">Pos</th>
+                <th class="col-posdiff">ΔPos</th>
+                <th class="col-driver">Driver</th>
+                <th class="col-laptime">Lap time</th>
+                <th class="col-ahead">Ahead</th>
+                <th class="col-tyre">Tyre</th>
+                <th class="col-stops">Stops</th>
+                <th class="col-pit">Pit</th>
+                <th>S1</th>
+                <th>S2</th>
+                <th>S3</th>
+              </tr>
+            </thead>
+            <tbody id="race-tbody">
+              <!-- Rows will be filled by app.js -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="table-section table-car" id="table-car">
+        <div class="table-header">
+          <div class="table-title">Car</div>
+        </div>
+        <div class="table-wrapper">
+          <div class="car-kv" id="car-kv">
+            <!-- Filled by app.js -->
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
+
+
+
+

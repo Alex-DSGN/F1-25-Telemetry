@@ -1,0 +1,19 @@
+{
+  "visual": {
+    "16": { "label": "S", "cssClass": "tyre-s" },
+    "17": { "label": "M", "cssClass": "tyre-m" },
+    "18": { "label": "H", "cssClass": "tyre-h" },
+    "7": { "label": "I", "cssClass": "tyre-i" },
+    "8": { "label": "W", "cssClass": "tyre-w" }
+  },
+  "actual": {
+    "16": { "label": "C5", "cssClass": "" },
+    "17": { "label": "C4", "cssClass": "" },
+    "18": { "label": "C3", "cssClass": "" },
+    "19": { "label": "C2", "cssClass": "" },
+    "20": { "label": "C1", "cssClass": "" },
+    "21": { "label": "C0", "cssClass": "" },
+    "22": { "label": "C6", "cssClass": "" }
+  }
+}
+

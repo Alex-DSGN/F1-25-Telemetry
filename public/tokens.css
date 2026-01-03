@@ -1,0 +1,62 @@
+:root {
+  /* === Primitive color === */
+
+  /* Base */
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  /* Neutral */
+  --color-neutral50: #f4f4f4;
+  --color-neutral100: #eaeaea;
+  --color-neutral200: #c7c7c7;
+  --color-neutral300: #b0b0b1;
+  --color-neutral400: #99999a;
+  --color-neutral500: #828383;
+  --color-neutral600: #6b6c6d;
+  --color-neutral700: #555556;
+  --color-neutral800: #3e3e40;
+  --color-neutral900: #272729;
+  --color-neutral1000: #19191b;
+
+  /* Status / Accent */
+  --color-green-400: #4ce160;
+  --color-red-400: #f02d2d;
+  --color-red-700: #a11e1e;
+  --color-purple-400: #b56bf0;
+  --color-slate-400: #8a8f98;
+  --color-yellow-400: #f7d038;
+  --color-blue-400: #2f78ff;
+
+  /* === Semantic color === */
+  --color-background-surface1: var(--color-neutral1000);      /* Main background color */
+  --color-background-surface2: var(--color-neutral900);       /* Secondary background color */
+  --color-background-surface3: var(--color-neutral800);       /* Tertiary background color */
+  --color-background-primary: var(--color-white);             /* фон основных интерактивных элементов */
+  
+  --color-foreground-primary: var(--color-white);             /* Primary text color */
+  --color-foreground-secondary: var(--color-neutral300);      /* Secondary text color */
+  --color-foreground-tertiary: var(--color-neutral600);       /* Tertiary text color */
+  --color-foreground-quaternary: var(--color-slate-400);      /* Additional muted text color */
+
+  --color-foreground-success: var(--color-green-400);
+  --color-foreground-danger: var(--color-red-400);
+  --color-foreground-danger-muted: var(--color-red-700);
+  --color-foreground-accent: var(--color-purple-400);
+
+  --color-border-primary: var(--color-neutral800);            /* Primary border color */
+
+  /* Tyre sidewall colors */
+  --color-tyre-soft: var(--color-red-400);    /* Soft */
+  --color-tyre-medium: var(--color-yellow-400); /* Medium */
+  --color-tyre-hard: var(--color-white);      /* Hard */
+  --color-tyre-inter: var(--color-green-400); /* Inter */
+  --color-tyre-wet: var(--color-blue-400);    /* Wet */
+
+  /* Tyre label (text) colors for contrast */
+  --color-tyre-soft-text: var(--color-white);
+  --color-tyre-medium-text: var(--color-black);
+  --color-tyre-hard-text: var(--color-black);
+  --color-tyre-inter-text: var(--color-black);
+  --color-tyre-wet-text: var(--color-white);
+
+}
