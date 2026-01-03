@@ -4,10 +4,15 @@ const bestLapTimeEl = document.getElementById('best-lap-time');
 const bestLapNumberEl = document.getElementById('best-lap-number');
 const overallBestLapTimeEl = document.getElementById('overall-best-lap-time');
 const overallBestLapNumberEl = document.getElementById('overall-best-lap-number');
+const overallBestLapDriverEl = document.getElementById('overall-best-lap-driver');
+const liveLapNumberEl = document.getElementById('live-lap-number');
 const liveDeltaBestEl = document.getElementById('live-delta-best');
 const raceFuelDeltaEl = document.getElementById('race-fuel-delta');
 const raceErsEl = document.getElementById('race-ers');
 const racePenaltiesEl = document.getElementById('race-penalties');
+const tyresUsedEl = document.getElementById('tyres-used');
+const tyresCurrentEl = document.getElementById('tyres-current');
+const tyresWearEl = document.getElementById('tyres-wear');
 const lapsTbodyEl = document.getElementById('laps-tbody');
 const raceTbodyEl = document.getElementById('race-tbody');
 const carKvEl = document.getElementById('car-kv');
@@ -324,7 +329,7 @@ function buildPersonalTyreStacks(lapsAsc, liveLap) {
   const rolling = [];
   for (const lap of lapsAsc) {
     const meta = tyreCodeToMeta(lap.tyreVisualCompound, lap.tyreActualCompound);
-    const token = meta.label ? `${meta.label}:${lap.numPitStops ?? 0}` : null;
+    const token = meta.label || null;
     if (meta.label && (!rolling.length || rolling[rolling.length - 1].token !== token)) {
       rolling.push({ label: meta.label, cssClass: meta.cssClass, token });
     }
@@ -332,7 +337,7 @@ function buildPersonalTyreStacks(lapsAsc, liveLap) {
   }
   if (liveLap && liveLap.lapNumber != null) {
     const meta = tyreCodeToMeta(liveLap.tyreVisualCompound, liveLap.tyreActualCompound);
-    const token = meta.label ? `${meta.label}:${liveLap.numPitStops ?? 0}` : null;
+    const token = meta.label || null;
     const liveStack = rolling.slice();
     if (meta.label && (!liveStack.length || liveStack[liveStack.length - 1].token !== token)) {
       liveStack.push({ label: meta.label, cssClass: meta.cssClass, token });
@@ -340,6 +345,78 @@ function buildPersonalTyreStacks(lapsAsc, liveLap) {
     stacksByLap.set(liveLap.lapNumber, liveStack);
   }
   return stacksByLap;
+}
+
+function renderTyresSummary(state, personalTyreStacks, lapsAsc) {
+  if (!tyresUsedEl || !tyresCurrentEl) return;
+
+  const liveLapNum = state.currentLap?.lapNumber;
+  const lastCompletedLapNum = lapsAsc.length ? lapsAsc[lapsAsc.length - 1].lapNumber : null;
+  const stackBase =
+    (liveLapNum != null ? personalTyreStacks.get(liveLapNum) : null) ||
+    (lastCompletedLapNum != null ? personalTyreStacks.get(lastCompletedLapNum) : null) ||
+    [];
+
+  // Дополнительно учитываем актуальные шины из CarStatus, если они изменились внутри текущего круга
+  const currentMeta = tyreCodeToMeta(
+    state.currentCarStatus?.visualTyreCompound ?? state.currentLap?.tyreVisualCompound,
+    state.currentCarStatus?.actualTyreCompound ?? state.currentLap?.tyreActualCompound
+  );
+  const stack =
+    currentMeta.label && (!stackBase.length || stackBase[stackBase.length - 1].label !== currentMeta.label)
+      ? [...stackBase, { label: currentMeta.label, cssClass: currentMeta.cssClass, token: currentMeta.label }]
+      : stackBase;
+
+  if (stack.length) {
+    renderTyreStack(tyresUsedEl, stack);
+  } else {
+    tyresUsedEl.textContent = '—';
+  }
+
+  const visualTyre = state.currentCarStatus?.visualTyreCompound ?? state.currentLap?.tyreVisualCompound;
+  const actualTyre = state.currentCarStatus?.actualTyreCompound ?? state.currentLap?.tyreActualCompound;
+  const tyreAge = state.currentCarStatus?.tyresAgeLaps ?? state.currentLap?.tyresAgeLaps;
+  const meta = tyreCodeToMeta(visualTyre, actualTyre);
+
+  tyresCurrentEl.textContent = '';
+  if (meta.label) {
+    const badge = document.createElement('span');
+    badge.className = `badge badge-tyre ${meta.cssClass}`.trim();
+    badge.textContent = meta.label;
+
+    const ageSpan = document.createElement('span');
+    ageSpan.className = 'tyres-current-age';
+    ageSpan.textContent = tyreAge != null ? `${tyreAge} lap${tyreAge === 1 ? '' : 's'}` : '—';
+
+    tyresCurrentEl.appendChild(badge);
+    tyresCurrentEl.appendChild(ageSpan);
+  } else {
+    tyresCurrentEl.textContent = '—';
+  }
+
+  if (tyresWearEl) {
+    const wear = state.currentCarDamage?.tyresWear;
+    if (Array.isArray(wear) && wear.length === 4) {
+      // Order: front left/right, then rear left/right
+      const order = [
+        { label: 'FL', idx: 2 },
+        { label: 'FR', idx: 3 },
+        { label: 'RL', idx: 0 },
+        { label: 'RR', idx: 1 }
+      ];
+      const parts = order.map(({ label, idx }) => {
+        const val = wear[idx];
+        const pct =
+          typeof val === 'number' && Number.isFinite(val)
+            ? Math.trunc(Math.max(0, Math.min(100, val)))
+            : null;
+        return pct != null ? `${label} ${pct}%` : `${label} —`;
+      });
+      tyresWearEl.textContent = parts.join(' · ');
+    } else {
+      tyresWearEl.textContent = '—';
+    }
+  }
 }
 
 function pitToLabel(pitStatus, pitLaneTimeMs) {
@@ -416,7 +493,7 @@ function renderRaceTable(state) {
       const tdTyre = document.createElement('td');
       tdTyre.className = 'col-tyre';
       const tyreMeta = tyreCodeToMeta(c.tyreVisualCompound, c.tyreActualCompound);
-      const tyreToken = tyreMeta.label ? `${tyreMeta.label}:${c.stops ?? 0}` : null;
+      const tyreToken = tyreMeta.label || null;
       const tyreHistory = ensureTyreHistory(raceTyreHistory, c.carIndex, tyreMeta, tyreToken);
       renderTyreStack(tdTyre, tyreHistory);
 
@@ -510,7 +587,26 @@ function renderState(state) {
     overallBestLapNumberEl.textContent =
       state.raceBestLapNum != null ? `L${state.raceBestLapNum}` : '';
   }
+  if (overallBestLapDriverEl) {
+    const bestIdx = state.raceBestLapCarIndex;
+    const driver =
+      bestIdx != null && Array.isArray(state.raceCars)
+        ? state.raceCars.find((c) => c.carIndex === bestIdx)?.name
+        : null;
+    overallBestLapDriverEl.textContent = driver ? driver : '';
+  }
   liveDeltaBestEl.textContent = formatDelta(state.liveDeltaToBestMs);
+  if (liveLapNumberEl) {
+    const lapNum = state.currentLap?.lapNumber;
+    const total = state.totalLaps;
+    if (lapNum != null && typeof total === 'number') {
+      liveLapNumberEl.textContent = `${lapNum} / ${total}`;
+    } else if (lapNum != null) {
+      liveLapNumberEl.textContent = `${lapNum}`;
+    } else {
+      liveLapNumberEl.textContent = '—';
+    }
+  }
 
   renderRaceHudRow(state);
 
@@ -542,6 +638,7 @@ function renderState(state) {
 
   const lapsAsc = state.laps.slice().sort((a, b) => (a.lapNumber ?? 0) - (b.lapNumber ?? 0));
   const personalTyreStacks = buildPersonalTyreStacks(lapsAsc, state.currentLap);
+  renderTyresSummary(state, personalTyreStacks, lapsAsc);
 
   // Текущий круг (live) + завершенные круги (сверху самые новые)
   const lapsForRender = state.laps.slice().reverse();
@@ -582,10 +679,6 @@ function renderState(state) {
     tdTyre.className = 'col-tyre';
     const stack = lap.lapNumber != null ? personalTyreStacks.get(lap.lapNumber) || [] : [];
     renderTyreStack(tdTyre, stack);
-
-    const tdStops = document.createElement('td');
-    tdStops.className = 'col-stops';
-    tdStops.textContent = lap.numPitStops != null ? String(lap.numPitStops) : '';
 
     const tdPit = document.createElement('td');
     tdPit.className = 'col-pit';
@@ -643,7 +736,6 @@ function renderState(state) {
     tr.appendChild(tdTime);
     tr.appendChild(tdDelta);
     tr.appendChild(tdTyre);
-    tr.appendChild(tdStops);
     tr.appendChild(tdPit);
     tr.appendChild(tdS1);
     tr.appendChild(tdS2);

@@ -82,6 +82,7 @@ const PACKET_ID_PARTICIPANTS = 4;
 const PACKET_ID_CAR_TELEMETRY = 6;
 const PACKET_ID_SESSION_HISTORY = 11;
 const PACKET_ID_CAR_STATUS = 7;
+const PACKET_ID_CAR_DAMAGE = 10;
 const HEADER_SIZE = 29; // Размер PacketHeader в байтах
 const NUM_CARS = 22; // cs_maxNumCarsInUDPData
 const LAP_DATA_SIZE = 57; // Размер структуры LapData (по спецификации)
@@ -89,6 +90,7 @@ const CAR_STATUS_DATA_SIZE = 55; // (1239 - 29) / 22 = 55
 const CAR_TELEMETRY_DATA_SIZE = 60; // (1352 - 29 - 3) / 22 = 60
 const PARTICIPANT_DATA_SIZE = 57; // (1284 - 29 - 1) / 22 = 57 (см. Participants - 1284 bytes)
 const LAP_HISTORY_DATA_SIZE = 14; // Session History LapHistoryData size
+const CAR_DAMAGE_DATA_SIZE = 46; // (1041 - 29) / 22 = 46
 
 // Переменные из пакета Participants
 let numActiveCars = null; // from PacketParticipantsData.m_numActiveCars
@@ -119,6 +121,7 @@ const participantsTeamIdByIndex = new Map(); // carIndex -> teamId
 const participantsColorByIndex = new Map(); // carIndex -> { r,g,b }
 const carStatusByIndex = new Map(); // carIndex -> CarStatusData snapshot
 const carTelemetryByIndex = new Map(); // carIndex -> telemetry snapshot
+const carDamageByIndex = new Map(); // carIndex -> CarDamageData snapshot
 const lapDataByIndex = new Map(); // carIndex -> parsed lap data
 const sectorCacheByIndex = new Map(); // carIndex -> { sector1TimeMs, sector2TimeMs, sector3TimeMs }
 const pitLaneStintByIndex = new Map(); // carIndex -> { active, startLapNum, maxTimeMs, statusMax, lastTimeMs, lastStatusMax, lastLapNum }
@@ -445,6 +448,17 @@ function startDemoFeed() {
         ersDeployedThisLap: 700000,
         networkPaused: 0
       },
+      currentCarDamage: (() => {
+        const age = you?.tyresAgeLaps ?? 0;
+        const baseWear = Math.min(95, 5 + age * 3);
+        const jitter = (delta) => Math.max(0, Math.min(100, baseWear + delta));
+        return {
+          tyresWear: [jitter(1.5), jitter(2.5), jitter(0.5), jitter(1.0)],
+          tyresDamage: [0, 0, 0, 0],
+          brakesDamage: [0, 0, 0, 0],
+          tyreBlisters: [0, 0, 0, 0]
+        };
+      })(),
       currentCarTelemetry: {
         speedKph: you ? Math.max(0, Math.round((you.baseSpeed * 3.6) + (Math.sin(t / 500) * 5))) : 0,
         throttle: 0.85,
@@ -516,6 +530,7 @@ function resetSessionState(sessionUID) {
   participantsColorByIndex.clear();
   carStatusByIndex.clear();
   carTelemetryByIndex.clear();
+  carDamageByIndex.clear();
   lapDataByIndex.clear();
   sectorCacheByIndex.clear();
   pitLaneStintByIndex.clear();
@@ -567,7 +582,8 @@ function resetSessionState(sessionUID) {
     raceBestLapNum: null,
     currentCarStatus: null,
     currentCarTelemetry: null,
-    currentPenalties: null
+    currentPenalties: null,
+    currentCarDamage: null
   };
 }
 
@@ -1003,6 +1019,90 @@ function parseCarTelemetryForCar(buf, baseOffset) {
   };
 }
 
+function parseCarDamageForCar(buf, baseOffset) {
+  const perCarSize = Math.floor((buf.length - HEADER_SIZE) / NUM_CARS);
+  const needed = Math.min(CAR_DAMAGE_DATA_SIZE, perCarSize || 0);
+  if (needed <= 0) return null;
+  if (buf.length < baseOffset + needed) return null;
+  let o = baseOffset;
+
+  const tyresWear = [
+    buf.readFloatLE(o),
+    buf.readFloatLE(o + 4),
+    buf.readFloatLE(o + 8),
+    buf.readFloatLE(o + 12)
+  ];
+  o += 16;
+
+  const tyresDamage = [
+    buf.readUInt8(o),
+    buf.readUInt8(o + 1),
+    buf.readUInt8(o + 2),
+    buf.readUInt8(o + 3)
+  ];
+  o += 4;
+
+  const brakesDamage = [
+    buf.readUInt8(o),
+    buf.readUInt8(o + 1),
+    buf.readUInt8(o + 2),
+    buf.readUInt8(o + 3)
+  ];
+  o += 4;
+
+  const tyreBlisters = [
+    buf.readUInt8(o),
+    buf.readUInt8(o + 1),
+    buf.readUInt8(o + 2),
+    buf.readUInt8(o + 3)
+  ];
+  o += 4;
+
+  const frontLeftWingDamage = buf.readUInt8(o); o += 1;
+  const frontRightWingDamage = buf.readUInt8(o); o += 1;
+  const rearWingDamage = buf.readUInt8(o); o += 1;
+  const floorDamage = buf.readUInt8(o); o += 1;
+  const diffuserDamage = buf.readUInt8(o); o += 1;
+  const sidepodDamage = buf.readUInt8(o); o += 1;
+  const drsFault = buf.readUInt8(o); o += 1;
+  const ersFault = buf.readUInt8(o); o += 1;
+  const gearBoxDamage = buf.readUInt8(o); o += 1;
+  const engineDamage = buf.readUInt8(o); o += 1;
+  const engineMGUHWear = buf.readUInt8(o); o += 1;
+  const engineESWear = buf.readUInt8(o); o += 1;
+  const engineCEWear = buf.readUInt8(o); o += 1;
+  const engineICEWear = buf.readUInt8(o); o += 1;
+  const engineMGUKWear = buf.readUInt8(o); o += 1;
+  const engineTCWear = buf.readUInt8(o); o += 1;
+  const engineBlown = buf.readUInt8(o); o += 1;
+  const engineSeized = buf.readUInt8(o); o += 1;
+
+  return {
+    tyresWear,
+    tyresDamage,
+    brakesDamage,
+    tyreBlisters,
+    frontLeftWingDamage,
+    frontRightWingDamage,
+    rearWingDamage,
+    floorDamage,
+    diffuserDamage,
+    sidepodDamage,
+    drsFault,
+    ersFault,
+    gearBoxDamage,
+    engineDamage,
+    engineMGUHWear,
+    engineESWear,
+    engineCEWear,
+    engineICEWear,
+    engineMGUKWear,
+    engineTCWear,
+    engineBlown,
+    engineSeized
+  };
+}
+
 function handleCarTelemetryPacket(buf) {
   const header = parseHeader(buf);
   if (!header) return;
@@ -1026,6 +1126,32 @@ function handleCarTelemetryPacket(buf) {
       lapsState.currentCarTelemetry = t;
     }
   }
+}
+
+function handleCarDamagePacket(buf) {
+  const header = parseHeader(buf);
+  if (!header) return;
+
+  if (playerState.sessionUID === null || playerState.sessionUID !== header.sessionUID) {
+    resetSessionState(header.sessionUID);
+  }
+
+  const { playerCarIndex } = header;
+  for (let i = 0; i < NUM_CARS; i++) {
+    const baseOffset = HEADER_SIZE + i * CAR_DAMAGE_DATA_SIZE;
+    const dmg = parseCarDamageForCar(buf, baseOffset);
+    if (!dmg) continue;
+    carDamageByIndex.set(i, dmg);
+  }
+
+  if (playerCarIndex < NUM_CARS) {
+    const d = carDamageByIndex.get(playerCarIndex);
+    if (d) {
+      lapsState.currentCarDamage = d;
+    }
+  }
+
+  broadcastState();
 }
 
 function handleSessionPacket(buf) {
@@ -1633,6 +1759,9 @@ server.listen(HTTP_PORT, () => {
     }
     if (header.packetId === PACKET_ID_CAR_STATUS) {
       handleCarStatusPacket(msg);
+    }
+    if (header.packetId === PACKET_ID_CAR_DAMAGE) {
+      handleCarDamagePacket(msg);
     }
   });
 
