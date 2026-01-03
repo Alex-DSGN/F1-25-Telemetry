@@ -24,25 +24,59 @@
       <section class="metrics">
         <div class="metric">
           <div class="metric-label">Live lap</div>
-          <div class="metric-value" id="live-lap-time">--:--.--- </div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Best lap (personal)</div>
-          <div class="metric-value">
-            <span id="best-lap-time">--:--.---</span>
-            <span class="metric-sub" id="best-lap-number"></span>
+          <div class="metric-value metric-live-grid">
+            <div class="metric-live-row">
+              <span class="metric-live-caption">Lap</span>
+              <span id="live-lap-number">—</span>
+            </div>
+            <div class="metric-live-row">
+              <span class="metric-live-caption">Time</span>
+              <span id="live-lap-time">--:--.--- </span>
+            </div>
+            <div class="metric-live-row">
+              <span class="metric-live-caption">Delta vs best</span>
+              <span id="live-delta-best">--.--</span>
+            </div>
           </div>
         </div>
         <div class="metric">
-          <div class="metric-label">Best lap (overall)</div>
-          <div class="metric-value">
-            <span id="overall-best-lap-time">--:--.---</span>
-            <span class="metric-sub" id="overall-best-lap-number"></span>
+          <div class="metric-label">Best laps</div>
+          <div class="metric-value metric-best-grid">
+            <div class="metric-best-row">
+              <span class="metric-best-caption">Personal</span>
+              <span class="metric-best-inline">
+                <span class="metric-sub" id="best-lap-number"></span>
+                <span class="metric-best-time" id="best-lap-time">--:--.---</span>
+              </span>
+            </div>
+            <div class="metric-best-row">
+              <span class="metric-best-caption">Overall</span>
+              <span class="metric-best-overall">
+                <span class="metric-best-inline">
+                  <span class="metric-sub" id="overall-best-lap-number"></span>
+                  <span class="metric-best-time" id="overall-best-lap-time">--:--.---</span>
+                </span>
+                <span class="metric-sub metric-best-driver" id="overall-best-lap-driver"></span>
+              </span>
+            </div>
           </div>
         </div>
-        <div class="metric">
-          <div class="metric-label">Delta vs best</div>
-          <div class="metric-value" id="live-delta-best">--.--</div>
+        <div class="metric metric-tyres-box">
+          <div class="metric-label">Tyres</div>
+          <div class="metric-value metric-tyres">
+            <div class="metric-tyres-row">
+              <span class="tyres-caption">Used</span>
+              <span class="tyres-used" id="tyres-used">—</span>
+            </div>
+            <div class="metric-tyres-row">
+              <span class="tyres-caption">Current</span>
+              <span class="tyres-current" id="tyres-current">—</span>
+            </div>
+            <div class="metric-tyres-row">
+              <span class="tyres-caption">Wear</span>
+              <span class="tyres-wear" id="tyres-wear">—</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -79,7 +113,6 @@
                 <th>Lap time</th>
                 <th>Delta</th>
                 <th class="col-tyre">Tyre</th>
-                <th class="col-stops">Stops</th>
                 <th class="col-pit">Pit</th>
                 <th>S1</th>
                 <th>S2</th>
