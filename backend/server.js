@@ -960,8 +960,20 @@ function handleCarStatusPacket(buf) {
   if (playerState.currentLapNum != null) {
     const lapNum = playerState.currentLapNum;
     const existing = tyreByLapStart.get(lapNum);
+    const hasPitThisLap = pitLaneTimeByLap.has(lapNum);
+    const compoundsChanged =
+      existing &&
+      (existing.tyreVisualCompound !== playerState.currentTyreVisualCompound ||
+        existing.tyreActualCompound !== playerState.currentTyreActualCompound);
+    const ageAligned =
+      existing?.tyresAgeLaps != null &&
+      playerState.currentTyresAgeLaps != null &&
+      existing.tyresAgeLaps === playerState.currentTyresAgeLaps;
+    const shouldCorrectSnapshot =
+      compoundsChanged && ageAligned && !playerState.pitLaneActive && !hasPitThisLap;
     if (
       existing == null ||
+      shouldCorrectSnapshot ||
       (existing.tyreVisualCompound == null && playerState.currentTyreVisualCompound != null) ||
       (existing.tyreActualCompound == null && playerState.currentTyreActualCompound != null)
     ) {
