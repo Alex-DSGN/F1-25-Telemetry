@@ -97,13 +97,12 @@ function ersDeployModeToLabel(code) {
 }
 
 function driverStatusToLabel(code) {
-  if (code == null) return '—';
-  if (code === 0) return 'Garage';
+  // Показываем только 4 основных статуса; всё остальное скрываем
   if (code === 1) return 'Flying';
   if (code === 2) return 'In-lap';
   if (code === 3) return 'Out-lap';
   if (code === 4) return 'On track';
-  return String(code);
+  return '';
 }
 
 
@@ -567,11 +566,11 @@ function renderTyresSummary(state, personalTyreStacks, lapsAsc) {
 
 function pitToLabel(pitStatus, pitLaneTimeMs) {
   // pitStatus: 0=none, 1=pitting, 2=in pit area
-  const time = pitLaneTimeMs;
-  if ((pitStatus == null || pitStatus === 0) && (time == null || time <= 0)) return '';
-  const timeText = formatShortSeconds(time, 1);
+  const hasStatus = pitStatus != null && pitStatus !== 0;
+  const hasTime = pitLaneTimeMs != null && pitLaneTimeMs > 0;
+  if (!hasStatus && !hasTime) return '';
   const statusText = pitStatus === 2 ? 'BOX' : pitStatus === 1 ? 'IN' : 'P';
-  return timeText ? `${statusText} ${timeText}` : statusText;
+  return statusText;
 }
 
 function renderRaceTable(state) {
@@ -628,11 +627,6 @@ function renderRaceTable(state) {
       }
       tdName.appendChild(document.createTextNode(c.name ?? ''));
 
-      const tdDrv = document.createElement('td');
-      tdDrv.className = 'col-status';
-      const pitLabel = pitToLabel(c.pitStatus, c.pitLaneTimeMs);
-      tdDrv.textContent = pitLabel || driverStatusToLabel(c.driverStatus);
-
       const tdLap = document.createElement('td');
       tdLap.className = 'col-laptime';
       tdLap.textContent = formatTime(c.lapTimeMs);
@@ -645,6 +639,11 @@ function renderRaceTable(state) {
       // gap to car ahead
       tdGap.textContent = c.position === 1 ? '' : formatGapAhead(c.gapToCarAheadMs);
 
+      const tdDrv = document.createElement('td');
+      tdDrv.className = 'col-status';
+      const pitLabel = pitToLabel(c.pitStatus, c.pitLaneTimeMs);
+      tdDrv.textContent = pitLabel || driverStatusToLabel(c.driverStatus);
+
       const tdTyre = document.createElement('td');
       tdTyre.className = 'col-tyre';
       const tyreMeta = tyreCodeToMeta(c.tyreVisualCompound, c.tyreActualCompound);
@@ -655,6 +654,10 @@ function renderRaceTable(state) {
       const tdStops = document.createElement('td');
       tdStops.className = 'col-stops';
       tdStops.textContent = c.stops != null ? String(c.stops) : '';
+
+      const tdPitTime = document.createElement('td');
+      tdPitTime.className = 'col-pit';
+      tdPitTime.textContent = formatShortSeconds(c.pitLaneTimeMs, 1);
 
       const tdS1 = document.createElement('td');
       tdS1.className = 'col-sector';
@@ -682,9 +685,10 @@ function renderRaceTable(state) {
       tr.appendChild(tdName);
       tr.appendChild(tdLap);
       tr.appendChild(tdGap);
+      tr.appendChild(tdDrv);
       tr.appendChild(tdTyre);
       tr.appendChild(tdStops);
-      tr.appendChild(tdDrv);
+      tr.appendChild(tdPitTime);
       tr.appendChild(tdS1);
       tr.appendChild(tdS2);
       tr.appendChild(tdS3);
@@ -810,11 +814,6 @@ function renderState(state) {
       if (lap.deltaMs < 0) tdDelta.classList.add('delta-negative');
     }
 
-    const tdTyre = document.createElement('td');
-    tdTyre.className = 'col-tyre';
-    const stack = lap.lapNumber != null ? personalTyreStacks.get(lap.lapNumber) || [] : [];
-    renderTyreStack(tdTyre, stack);
-
     const tdDrv = document.createElement('td');
     tdDrv.className = 'col-status';
     const pitLabel = pitToLabel(lap.pitStatus, lap.pitLaneTimeMs);
@@ -822,6 +821,15 @@ function renderState(state) {
     const driverLabel =
       lapDriverStatus != null ? driverStatusToLabel(lapDriverStatus) : driverStatusToLabel(4); // default On track
     tdDrv.textContent = pitLabel || driverLabel;
+
+    const tdTyre = document.createElement('td');
+    tdTyre.className = 'col-tyre';
+    const stack = lap.lapNumber != null ? personalTyreStacks.get(lap.lapNumber) || [] : [];
+    renderTyreStack(tdTyre, stack);
+
+    const tdPitTime = document.createElement('td');
+    tdPitTime.className = 'col-pit';
+    tdPitTime.textContent = formatShortSeconds(lap.pitLaneTimeMs, 1);
 
     const tdS1 = document.createElement('td');
     tdS1.className = 'col-sector';
@@ -869,8 +877,9 @@ function renderState(state) {
     tr.appendChild(tdNumber);
     tr.appendChild(tdTime);
     tr.appendChild(tdDelta);
-    tr.appendChild(tdTyre);
     tr.appendChild(tdDrv);
+    tr.appendChild(tdTyre);
+    tr.appendChild(tdPitTime);
     tr.appendChild(tdS1);
     tr.appendChild(tdS2);
     tr.appendChild(tdS3);
