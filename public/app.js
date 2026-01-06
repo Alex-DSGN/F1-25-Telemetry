@@ -22,10 +22,11 @@ const pageEl = document.querySelector('.page');
 const tabPersonalEl = document.getElementById('tab-personal');
 const tabRaceEl = document.getElementById('tab-race');
 const tabCarEl = document.getElementById('tab-car');
+const marshalRowEl = document.getElementById('marshal-row');
+const marshalBarEl = document.getElementById('marshal-bar');
 
 // Кэши для фронтовой логики
 const racePosHistory = new Map(); // carIndex -> baseline position (первое увиденное)
-const racePitSeenAt = new Map(); // carIndex -> { seenAt, lapRef }
 const raceTyreHistory = new Map(); // carIndex -> [{ label, cssClass, token }]
 
 let tyreMap = null;
@@ -95,23 +96,36 @@ function ersDeployModeToLabel(code) {
   return String(code);
 }
 
+function driverStatusToLabel(code) {
+  if (code == null) return '—';
+  if (code === 0) return 'Garage';
+  if (code === 1) return 'Flying';
+  if (code === 2) return 'In-lap';
+  if (code === 3) return 'Out-lap';
+  if (code === 4) return 'On track';
+  return String(code);
+}
+
+
 function renderRaceHudRow(state) {
-  if (!raceFuelDeltaEl || !raceErsEl || !racePenaltiesEl) return;
+  if (!raceErsEl || !racePenaltiesEl) return;
 
   const cs = state.currentCarStatus || null;
   const pen = state.currentPenalties || null;
 
   // Вычисляет запас/недостачу топлива относительно оставшихся кругов гонки при наличии totalLaps, currentLap и fuelRemainingLaps.
-  const totalLaps = state.totalLaps;
-  const currentLap = state.currentLap?.lapNumber;
-  const remaining = cs?.fuelRemainingLaps;
-  if (typeof totalLaps === 'number' && typeof currentLap === 'number' && typeof remaining === 'number') {
-    const lapsLeft = Math.max(0, totalLaps - (currentLap - 1));
-    const delta = remaining - lapsLeft;
-    const sign = delta > 0 ? '+' : delta < 0 ? '−' : '±';
-    raceFuelDeltaEl.textContent = `${sign}${Math.abs(delta).toFixed(1)}L · ${fuelMixToLabel(cs?.fuelMix)}`;
-  } else {
-    raceFuelDeltaEl.textContent = '—';
+  if (raceFuelDeltaEl) {
+    const totalLaps = state.totalLaps;
+    const currentLap = state.currentLap?.lapNumber;
+    const remaining = cs?.fuelRemainingLaps;
+    if (typeof totalLaps === 'number' && typeof currentLap === 'number' && typeof remaining === 'number') {
+      const lapsLeft = Math.max(0, totalLaps - (currentLap - 1));
+      const delta = remaining - lapsLeft;
+      const sign = delta > 0 ? '+' : delta < 0 ? '−' : '±';
+      raceFuelDeltaEl.textContent = `${sign}${Math.abs(delta).toFixed(1)}L · ${fuelMixToLabel(cs?.fuelMix)}`;
+    } else {
+      raceFuelDeltaEl.textContent = '—';
+    }
   }
 
   // Вычисляет процент заряда ERS относительно константы ERS_MAX_J при наличии ersStoreEnergy.
@@ -126,16 +140,106 @@ function renderRaceHudRow(state) {
   // Формирует строку штрафов и предупреждений при наличии данных в текущем состоянии.
   if (pen) {
     const parts = [];
-    if (pen.penaltiesSec != null && pen.penaltiesSec > 0) parts.push(`+${pen.penaltiesSec}s`);
-    if (pen.totalWarnings != null && pen.totalWarnings > 0) parts.push(`Warnings: ${pen.totalWarnings}`);
-    if (pen.cornerCuttingWarnings != null && pen.cornerCuttingWarnings > 0) parts.push(`Corner cuts: ${pen.cornerCuttingWarnings}`);
-    if (pen.numUnservedDriveThroughPens != null && pen.numUnservedDriveThroughPens > 0) parts.push(`Drive-through: ${pen.numUnservedDriveThroughPens}`);
-    if (pen.numUnservedStopGoPens != null && pen.numUnservedStopGoPens > 0) parts.push(`Stop-go: ${pen.numUnservedStopGoPens}`);
+    const penSec = pen.penaltiesSec ?? 0;
+    const warns = pen.totalWarnings ?? 0;
+    const cuts = pen.cornerCuttingWarnings ?? 0;
+    parts.push(`Pen ${penSec}s`);
+    parts.push(`Warn ${warns}`);
+    if (cuts > 0) parts.push(`Cuts ${cuts}`);
+    if (pen.numUnservedDriveThroughPens != null && pen.numUnservedDriveThroughPens > 0)
+      parts.push(`DT ${pen.numUnservedDriveThroughPens}`);
+    if (pen.numUnservedStopGoPens != null && pen.numUnservedStopGoPens > 0)
+      parts.push(`SG ${pen.numUnservedStopGoPens}`);
     if (pen.pitStopShouldServePen === 1) parts.push('Serve at pit');
-    racePenaltiesEl.textContent = parts.length ? parts.join(' · ') : 'None';
+    racePenaltiesEl.textContent = parts.join(' · ');
   } else {
     racePenaltiesEl.textContent = '—';
   }
+}
+
+function renderMarshallingZones(state) {
+  if (!marshalRowEl || !marshalBarEl) return;
+  const zones = Array.isArray(state.marshallingZones) ? state.marshallingZones : [];
+  const trackLengthM = state.trackLengthM;
+  const playerIdx = state.playerCarIndex;
+  const safetyCarStatus = state.safetyCarStatus ?? 0; // 0 = none, 1 = SC, 2 = VSC, 3 = formation
+  marshalBarEl.innerHTML = '';
+
+  if (!zones.length || !trackLengthM) {
+    marshalRowEl.classList.remove('is-visible');
+    return;
+  }
+
+  // Equal-width zones, but preserve ordering by start
+  const sorted = zones
+    .map((z, idx) => ({
+      start: Math.min(1, Math.max(0, Number.isFinite(z.zoneStart) ? z.zoneStart : 0)),
+      flag: z.zoneFlag,
+      idx
+    }))
+    .sort((a, b) => a.start - b.start);
+  const zoneCount = sorted.length;
+
+  const flagClass = (flag) => {
+    if (flag === 3) return 'flag-yellow';
+    if (flag === 2) return 'flag-blue';
+    if (flag === 1) return 'flag-green';
+    return '';
+  };
+
+  const safetyClass = (() => {
+    if (safetyCarStatus === 1) return 'flag-sc';
+    if (safetyCarStatus === 2) return 'flag-vsc';
+    if (safetyCarStatus === 3) return 'flag-sc-formation';
+    return '';
+  })();
+
+  // build segments
+  const segmentsWrap = document.createElement('div');
+  segmentsWrap.className = 'marshal-segments';
+  sorted.forEach((z) => {
+    const zoneEl = document.createElement('div');
+    zoneEl.className = 'marshal-zone';
+    const barEl = document.createElement('div');
+    barEl.className = 'marshal-zone-bar';
+    const zFlag = z.flag;
+    if (safetyClass) {
+      barEl.classList.add(safetyClass);
+    } else if (zFlag != null && zFlag !== 0 && zFlag !== -1) {
+      barEl.classList.add(flagClass(zFlag));
+    }
+    zoneEl.appendChild(barEl);
+    segmentsWrap.appendChild(zoneEl);
+  });
+
+  marshalBarEl.appendChild(segmentsWrap);
+
+  // Dots overlay (non-pitting cars only)
+  const dotsEl = document.createElement('div');
+  dotsEl.className = 'marshal-dots';
+  if (Array.isArray(state.raceCars)) {
+    state.raceCars.forEach((c) => {
+      if (c.lapDistance == null || !Number.isFinite(c.lapDistance)) return;
+      const frac = Math.max(0, Math.min(1, c.lapDistance / trackLengthM));
+      const dot = document.createElement('span');
+      dot.className = 'marshal-dot';
+      if (playerIdx != null && c.carIndex === playerIdx) {
+        dot.classList.add('is-player');
+      }
+      dot.style.left = `${frac * 100}%`;
+      const col = c.teamColour;
+      if (col && col.r != null) {
+        dot.style.backgroundColor = `rgb(${col.r}, ${col.g}, ${col.b})`;
+      } else {
+        dot.style.backgroundColor = 'var(--color-foreground-secondary)';
+      }
+      dot.title = c.name || '';
+      dotsEl.appendChild(dot);
+    });
+  }
+  marshalBarEl.appendChild(dotsEl);
+
+  marshalRowEl.classList.add('is-visible');
 }
 
 function renderCarTab(state) {
@@ -144,6 +248,7 @@ function renderCarTab(state) {
 
   const status = state.currentCarStatus || null;
   const tel = state.currentCarTelemetry || null;
+  const dmg = state.currentCarDamage || null;
   if (!status && !tel) {
     const row = document.createElement('div');
     row.className = 'kv';
@@ -180,6 +285,25 @@ function renderCarTab(state) {
   const telemetry = [];
   const temps = [];
   const misc = [];
+  const damage = [];
+
+  const formatWheelArray = (arr, unit = '%', digits = 0) => {
+    if (!Array.isArray(arr) || arr.length !== 4) return '—';
+    const order = [
+      { label: 'FL', idx: 2 },
+      { label: 'FR', idx: 3 },
+      { label: 'RL', idx: 0 },
+      { label: 'RR', idx: 1 }
+    ];
+    return order
+      .map(({ label, idx }) => {
+        const v = arr[idx];
+        if (v == null || Number.isNaN(v)) return `${label} —`;
+        const val = Number.isInteger(v) ? v : v.toFixed(digits);
+        return `${label} ${val}${unit}`;
+      })
+      .join(' · ');
+  };
 
   if (status) {
     tyres.push(['Tyre Visual', status.visualTyreCompound != null ? String(status.visualTyreCompound) : '—']);
@@ -233,12 +357,34 @@ function renderCarTab(state) {
     if (Array.isArray(tel.surfaceType)) misc.push(['Surface Type', tel.surfaceType.join(', ')]);
   }
 
+  if (dmg) {
+    damage.push(['Tyre Wear', formatWheelArray(dmg.tyresWear, '%', 0)]);
+    damage.push(['Tyre Damage', formatWheelArray(dmg.tyresDamage, '%', 0)]);
+    damage.push(['Tyre Blisters', formatWheelArray(dmg.tyreBlisters, '%', 0)]);
+    damage.push(['Brakes Damage', formatWheelArray(dmg.brakesDamage, '%', 0)]);
+    damage.push(['Front Wing L/R', `${dmg.frontLeftWingDamage ?? '—'}% / ${dmg.frontRightWingDamage ?? '—'}%`]);
+    damage.push(['Rear Wing', dmg.rearWingDamage != null ? `${dmg.rearWingDamage}%` : '—']);
+    damage.push(['Floor/Diffuser/Sidepod', [dmg.floorDamage, dmg.diffuserDamage, dmg.sidepodDamage].some((v) => v != null) ? `${dmg.floorDamage ?? '—'} / ${dmg.diffuserDamage ?? '—'} / ${dmg.sidepodDamage ?? '—'} %` : '—']);
+    damage.push(['Gearbox', dmg.gearBoxDamage != null ? `${dmg.gearBoxDamage}%` : '—']);
+    damage.push(['Engine Damage', dmg.engineDamage != null ? `${dmg.engineDamage}%` : '—']);
+    damage.push([
+      'Engine Wear (ICE/MGU-H/ES/CE/MGU-K/TC)',
+      [dmg.engineICEWear, dmg.engineMGUHWear, dmg.engineESWear, dmg.engineCEWear, dmg.engineMGUKWear, dmg.engineTCWear].some((v) => v != null)
+        ? `${dmg.engineICEWear ?? '—'} / ${dmg.engineMGUHWear ?? '—'} / ${dmg.engineESWear ?? '—'} / ${dmg.engineCEWear ?? '—'} / ${dmg.engineMGUKWear ?? '—'} / ${dmg.engineTCWear ?? '—'} %`
+        : '—'
+    ]);
+    damage.push(['DRS Fault', dmg.drsFault === 1 ? 'FAULT' : 'OK']);
+    damage.push(['ERS Fault', dmg.ersFault === 1 ? 'FAULT' : 'OK']);
+    damage.push(['Engine Blown/Seized', `${dmg.engineBlown === 1 ? 'BLOWN' : 'OK'} / ${dmg.engineSeized === 1 ? 'SEIZED' : 'OK'}`]);
+  }
+
   addSection('Tyres', tyres);
   addSection('Fuel', fuel);
   addSection('Controls', controls);
   addSection('ERS / Engine', ersEngine);
   addSection('Telemetry', telemetry);
   addSection('Temperatures', temps);
+  addSection('Damage', damage);
   addSection('Misc', misc);
 }
 
@@ -443,9 +589,13 @@ function renderRaceTable(state) {
       }
 
       // Δ Position vs предыдущей отрисовки
-      const baselinePos = racePosHistory.get(c.carIndex);
+      const gridBaseline =
+        c.gridPosition != null && c.gridPosition !== 255 && Number.isFinite(c.gridPosition)
+          ? c.gridPosition
+          : null;
+      const baselinePos = gridBaseline != null ? gridBaseline : racePosHistory.get(c.carIndex);
       const curPos = c.position;
-      if (baselinePos == null && Number.isFinite(curPos)) {
+      if (baselinePos == null && gridBaseline == null && Number.isFinite(curPos)) {
         racePosHistory.set(c.carIndex, curPos);
       }
       const hasDelta = Number.isFinite(baselinePos) && Number.isFinite(curPos);
@@ -478,6 +628,11 @@ function renderRaceTable(state) {
       }
       tdName.appendChild(document.createTextNode(c.name ?? ''));
 
+      const tdDrv = document.createElement('td');
+      tdDrv.className = 'col-status';
+      const pitLabel = pitToLabel(c.pitStatus, c.pitLaneTimeMs);
+      tdDrv.textContent = pitLabel || driverStatusToLabel(c.driverStatus);
+
       const tdLap = document.createElement('td');
       tdLap.className = 'col-laptime';
       tdLap.textContent = formatTime(c.lapTimeMs);
@@ -501,43 +656,22 @@ function renderRaceTable(state) {
       tdStops.className = 'col-stops';
       tdStops.textContent = c.stops != null ? String(c.stops) : '';
 
-      const tdPit = document.createElement('td');
-      tdPit.className = 'col-pit';
-      const pitLabel = pitToLabel(c.pitStatus, c.pitLaneTimeMs);
-      const existingPit = racePitSeenAt.get(c.carIndex);
-      const seenAt = existingPit?.seenAt ?? (pitLabel ? Date.now() : null);
-      const lapRef = existingPit?.lapRef ?? c.lapNumber;
-      if (pitLabel && seenAt != null) {
-        racePitSeenAt.set(c.carIndex, { seenAt, lapRef });
-      }
-      const ageOk = seenAt != null ? Date.now() - seenAt < 10000 : false;
-      const lapOk = lapRef != null ? c.lapNumber === lapRef : true;
-      const showPit = pitLabel && ageOk && lapOk;
-      if (c.lapNumber != null && lapRef != null && c.lapNumber > lapRef) {
-        racePitSeenAt.delete(c.carIndex);
-      } else if (!pitLabel && existingPit) {
-        racePitSeenAt.delete(c.carIndex);
-      }
-      if (showPit) {
-        const span = document.createElement('span');
-        span.className = 'badge badge-pit';
-        span.textContent = pitLabel;
-        tdPit.appendChild(span);
-      }
-
       const tdS1 = document.createElement('td');
+      tdS1.className = 'col-sector';
       tdS1.textContent = formatTime(c.sector1TimeMs);
       if (state.raceBestSector1CarIndex != null && c.carIndex === state.raceBestSector1CarIndex) {
         tdS1.classList.add('best-sector');
       }
 
       const tdS2 = document.createElement('td');
+      tdS2.className = 'col-sector';
       tdS2.textContent = formatTime(c.sector2TimeMs);
       if (state.raceBestSector2CarIndex != null && c.carIndex === state.raceBestSector2CarIndex) {
         tdS2.classList.add('best-sector');
       }
 
       const tdS3 = document.createElement('td');
+      tdS3.className = 'col-sector';
       tdS3.textContent = formatTime(c.sector3TimeMs);
       if (state.raceBestSector3CarIndex != null && c.carIndex === state.raceBestSector3CarIndex) {
         tdS3.classList.add('best-sector');
@@ -550,7 +684,7 @@ function renderRaceTable(state) {
       tr.appendChild(tdGap);
       tr.appendChild(tdTyre);
       tr.appendChild(tdStops);
-      tr.appendChild(tdPit);
+      tr.appendChild(tdDrv);
       tr.appendChild(tdS1);
       tr.appendChild(tdS2);
       tr.appendChild(tdS3);
@@ -609,6 +743,7 @@ function renderState(state) {
   }
 
   renderRaceHudRow(state);
+  renderMarshallingZones(state);
 
   // Обновить статус подключения
   if (connectionStatusEl) {
@@ -680,19 +815,16 @@ function renderState(state) {
     const stack = lap.lapNumber != null ? personalTyreStacks.get(lap.lapNumber) || [] : [];
     renderTyreStack(tdTyre, stack);
 
-    const tdPit = document.createElement('td');
-    tdPit.className = 'col-pit';
+    const tdDrv = document.createElement('td');
+    tdDrv.className = 'col-status';
     const pitLabel = pitToLabel(lap.pitStatus, lap.pitLaneTimeMs);
-    if (pitLabel) {
-      const span = document.createElement('span');
-      span.className = 'badge badge-pit';
-      span.textContent = pitLabel;
-      tdPit.appendChild(span);
-    } else {
-      tdPit.textContent = '';
-    }
+    const lapDriverStatus = lap.driverStatus ?? (lap.isLive ? state.currentCarStatus?.driverStatus : null);
+    const driverLabel =
+      lapDriverStatus != null ? driverStatusToLabel(lapDriverStatus) : driverStatusToLabel(4); // default On track
+    tdDrv.textContent = pitLabel || driverLabel;
 
     const tdS1 = document.createElement('td');
+    tdS1.className = 'col-sector';
     tdS1.textContent = formatTime(lap.sector1TimeMs);
     // Подсветить лучший сектор фиолетовым
     if (
@@ -705,6 +837,7 @@ function renderState(state) {
     }
 
     const tdS2 = document.createElement('td');
+    tdS2.className = 'col-sector';
     tdS2.textContent = formatTime(lap.sector2TimeMs);
     // Подсветить лучший сектор фиолетовым
     if (
@@ -717,6 +850,7 @@ function renderState(state) {
     }
 
     const tdS3 = document.createElement('td');
+    tdS3.className = 'col-sector';
     tdS3.textContent = formatTime(lap.sector3TimeMs);
     // Подсветить лучший сектор фиолетовым
     if (
@@ -736,7 +870,7 @@ function renderState(state) {
     tr.appendChild(tdTime);
     tr.appendChild(tdDelta);
     tr.appendChild(tdTyre);
-    tr.appendChild(tdPit);
+    tr.appendChild(tdDrv);
     tr.appendChild(tdS1);
     tr.appendChild(tdS2);
     tr.appendChild(tdS3);

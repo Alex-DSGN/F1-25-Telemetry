@@ -82,10 +82,6 @@
 
       <div class="race-hud-row" id="race-hud-row">
         <div class="race-hud-item">
-          <span class="race-hud-label">Fuel</span>
-          <span class="race-hud-value" id="race-fuel-delta">—</span>
-        </div>
-        <div class="race-hud-item">
           <span class="race-hud-label">ERS</span>
           <span class="race-hud-value" id="race-ers">—</span>
         </div>
@@ -101,6 +97,11 @@
         <button class="tab" id="tab-car" type="button">Car</button>
       </div>
 
+      <section class="marshal-section" id="marshal-row">
+        <div class="marshal-title">Marshalling zones</div>
+        <div class="marshal-bar" id="marshal-bar"></div>
+      </section>
+
       <section class="table-section">
         <div class="table-header">
           <div class="table-title">Laps</div>
@@ -113,10 +114,10 @@
                 <th>Lap time</th>
                 <th>Delta</th>
                 <th class="col-tyre">Tyre</th>
-                <th class="col-pit">Pit</th>
-                <th>S1</th>
-                <th>S2</th>
-                <th>S3</th>
+                <th class="col-status">Drv</th>
+                <th class="col-sector">S1</th>
+                <th class="col-sector">S2</th>
+                <th class="col-sector">S3</th>
                 <th class="col-valid">Valid</th>
               </tr>
             </thead>
@@ -142,10 +143,10 @@
                 <th class="col-ahead">Ahead</th>
                 <th class="col-tyre">Tyre</th>
                 <th class="col-stops">Stops</th>
-                <th class="col-pit">Pit</th>
-                <th>S1</th>
-                <th>S2</th>
-                <th>S3</th>
+                <th class="col-status">Drv</th>
+                <th class="col-sector">S1</th>
+                <th class="col-sector">S2</th>
+                <th class="col-sector">S3</th>
               </tr>
             </thead>
             <tbody id="race-tbody">

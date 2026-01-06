@@ -52,7 +52,9 @@ let lapsState = {
   bestSector2TimeMs: null,
   bestSector3TimeMs: null,
   isConnected: false,
-  laps: [] // { lapNumber, lapTimeMs, deltaMs, valid, isBest, sector1TimeMs, sector2TimeMs, sector3TimeMs }
+  laps: [], // { lapNumber, lapTimeMs, deltaMs, valid, isBest, sector1TimeMs, sector2TimeMs, sector3TimeMs }
+  marshallingZones: [], // { zoneStart, zoneFlag }
+  safetyCarStatus: 0 // 0 = none, 1 = SC, 2 = VSC, 3 = formation
 };
 
 // Внутреннее состояние игрока, используемое для фиксации завершения круга и валидности данных
@@ -334,21 +336,21 @@ function startDemoFeed() {
     const you = withDistance.find((c) => c.carIndex === playerCarIndex);
     const liveLapTimeMs = you ? t - you.lapStartAt : 0;
 
-    // Лучшие по гонке
-    let raceBestLapTimeMs = null;
-    let raceBestLapCarIndex = null;
-    let raceBestS1 = null;
-    let raceBestS2 = null;
-    let raceBestS3 = null;
-    let raceBestS1CarIndex = null;
-    let raceBestS2CarIndex = null;
-    let raceBestS3CarIndex = null;
-    let raceBestLapNumLocal = null;
+    // Лучшие по гонке (накапливаем, не сбрасываем каждый тик)
+    let raceBestLapTimeMs = lapsState.raceBestLapTimeMs ?? null;
+    let raceBestLapCarIndex = lapsState.raceBestLapCarIndex ?? null;
+    let raceBestLapNumLocal = lapsState.raceBestLapNum ?? null;
+    let raceBestS1 = lapsState.raceBestSector1TimeMs ?? null;
+    let raceBestS2 = lapsState.raceBestSector2TimeMs ?? null;
+    let raceBestS3 = lapsState.raceBestSector3TimeMs ?? null;
+    let raceBestS1CarIndex = lapsState.raceBestSector1CarIndex ?? null;
+    let raceBestS2CarIndex = lapsState.raceBestSector2CarIndex ?? null;
+    let raceBestS3CarIndex = lapsState.raceBestSector3CarIndex ?? null;
     for (const c of withDistance) {
       if (c.lastLapTimeMs != null && (raceBestLapTimeMs == null || c.lastLapTimeMs < raceBestLapTimeMs)) {
         raceBestLapTimeMs = c.lastLapTimeMs;
         raceBestLapCarIndex = c.carIndex;
-        raceBestLapNumLocal = c.lastLapTimeMs ? c.lapNumber - 1 : null;
+      raceBestLapNumLocal = c.lastLapTimeMs ? Math.max(1, c.lapNumber - 1) : null;
       }
       if (c.lastS1 != null && (raceBestS1 == null || c.lastS1 < raceBestS1)) {
         raceBestS1 = c.lastS1;
@@ -583,7 +585,8 @@ function resetSessionState(sessionUID) {
     currentCarStatus: null,
     currentCarTelemetry: null,
     currentPenalties: null,
-    currentCarDamage: null
+    currentCarDamage: null,
+    marshallingZones: []
   };
 }
 
@@ -1179,6 +1182,25 @@ function handleSessionPacket(buf) {
   const sessionTimeLeftSec = buf.readUInt16LE(HEADER_SIZE + 9);
   const sessionDurationSec = buf.readUInt16LE(HEADER_SIZE + 11);
   const pitSpeedLimitKph = buf.readUInt8(HEADER_SIZE + 13);
+  const numMarshalZones = buf.readUInt8(HEADER_SIZE + 18);
+
+  // Marshal zones start right after numMarshalZones, 5 bytes each (float start + int8 flag)
+  const marshalBase = HEADER_SIZE + 19;
+  const marshallingZones = [];
+  for (let i = 0; i < numMarshalZones; i++) {
+    const off = marshalBase + i * 5;
+    if (off + 5 > buf.length) break;
+    const zoneStart = buf.readFloatLE(off);
+    const zoneFlag = buf.readInt8(off + 4);
+    marshallingZones.push({ zoneStart, zoneFlag });
+  }
+
+  // Safety car status follows marshal zones (uint8)
+  let safetyCarStatus = lapsState.safetyCarStatus;
+  const safetyCarOffset = marshalBase + numMarshalZones * 5;
+  if (safetyCarOffset < buf.length) {
+    safetyCarStatus = buf.readUInt8(safetyCarOffset);
+  }
 
   lapsState.totalLaps = totalLaps;
   lapsState.sessionType = sessionType;
@@ -1191,6 +1213,8 @@ function handleSessionPacket(buf) {
   lapsState.sessionTimeLeftSec = sessionTimeLeftSec;
   lapsState.sessionDurationSec = sessionDurationSec;
   lapsState.pitSpeedLimitKph = pitSpeedLimitKph;
+  lapsState.marshallingZones = marshallingZones;
+  lapsState.safetyCarStatus = safetyCarStatus;
 
   // Determine session kind using m_sessionType (more reliable than totalLaps).
   // Values are consistent with recent F1 UDP specs:
@@ -1366,7 +1390,10 @@ function handleLapDataPacket(buf) {
       pitStatus: pitStatusMax,
       pitLaneTimeMs,
       stops: lap.numPitStops,
-      lapDistance: lap.lapDistance
+      lapDistance: lap.lapDistance,
+      gridPosition: lap.gridPosition,
+      driverStatus: lap.driverStatus,
+      resultStatus: lap.resultStatus
     };
   });
 
@@ -1444,6 +1471,24 @@ function handleLapDataPacket(buf) {
     ) {
       raceBestSector3TimeMs = c.sector3TimeMs;
       raceBestSector3CarIndex = c.carIndex;
+    }
+  }
+
+  // Попробуем уточнить best lap/num по полной истории кругов (если пришли SessionHistory).
+  // Используем минимальный lapTimeMs среди всех известных кругов; если время совпало, но lapNum известен — берём из истории.
+  for (const [carIdx, history] of sessionHistoryByCarIndex.entries()) {
+    for (const [lapNum, entry] of history.entries()) {
+      const lt = entry?.lapTimeMs;
+      if (lt == null || lt <= 0) continue;
+      if (
+        raceBestLapTimeMs == null ||
+        lt < raceBestLapTimeMs ||
+        (lt === raceBestLapTimeMs && raceBestLapNumLocal !== lapNum)
+      ) {
+        raceBestLapTimeMs = lt;
+        raceBestLapCarIndex = carIdx;
+        raceBestLapNumLocal = lapNum;
+      }
     }
   }
 
