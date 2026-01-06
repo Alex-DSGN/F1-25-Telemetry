@@ -27,6 +27,8 @@ body {
   --col-stops: 56px;
   --col-pit: 88px;
   --col-valid: 64px;
+  --col-status: 96px;
+  --col-sector: 88px;
   --col-driver-max: 220px;
 }
 
@@ -274,6 +276,116 @@ body {
   white-space: nowrap;
 }
 
+.marshal-section {
+  display: none;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-primary);
+  background: var(--color-background-surface1);
+}
+
+.marshal-section.is-visible {
+  display: block;
+}
+
+.page:not(.view-race) .marshal-section {
+  display: none !important;
+}
+
+.marshal-title {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-foreground-secondary);
+  margin-bottom: 6px;
+}
+
+.marshal-bar {
+  position: relative;
+  width: 100%;
+  height: 32px;
+  border: none;
+  background: transparent;
+  overflow: hidden;
+}
+
+.marshal-segments {
+  position: relative;
+  display: flex;
+  height: 12px;
+  width: 100%;
+  bottom: 0;
+}
+
+.marshal-zone {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 4px;
+  margin: 0 1px;
+  border: none;
+  border-left: 0 none transparent;
+  border-image: none;
+  background: var(--color-background-surface2);
+}
+
+.marshal-zone-bar {
+  position: relative;
+  height: 100%;
+  background: transparent;
+  border: none;
+}
+
+.marshal-zone-bar.flag-yellow {
+  background: rgba(255, 193, 7, 0.45);
+}
+
+.marshal-zone-bar.flag-sc {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 193, 7, 0.7) 0%,
+    rgba(255, 193, 7, 0.55) 50%,
+    rgba(255, 193, 7, 0.7) 100%
+  );
+}
+
+.marshal-zone-bar.flag-vsc {
+  background: rgba(181, 107, 240, 0.5);
+}
+
+.marshal-zone-bar.flag-sc-formation {
+  background: rgba(255, 193, 7, 0.35);
+}
+
+.marshal-zone-bar.flag-blue {
+  background: rgba(0, 123, 255, 0.45);
+}
+
+.marshal-zone-bar.flag-green {
+  background: rgba(40, 167, 69, 0.45);
+}
+
+.marshal-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 18px;
+  height: 14px;
+  pointer-events: none;
+}
+
+.marshal-dot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transform: translate(-50%, 0);
+  transition: left 0.3s ease;
+}
+
+.marshal-dot.is-player {
+  box-shadow: 0 0 0 2px var(--color-foreground-primary);
+}
+
 .tabs {
   display: flex;
   gap: 8px;
@@ -358,6 +470,13 @@ body {
   text-overflow: ellipsis;
 }
 
+.col-sector {
+  width: var(--col-sector);
+  min-width: 0;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
 /* Fixed/narrow columns; rest auto-fit content */
 .col-lapno {
   width: var(--col-lapno);
@@ -369,6 +488,10 @@ body {
 
 .col-tyre {
   width: var(--col-tyre);
+}
+
+.col-status {
+  width: var(--col-status);
 }
 
 .col-stops {
@@ -439,7 +562,7 @@ body {
 .badge-tyre.layered {
   position: relative;
   margin-left: -12px;
-  outline: 2px solid var(--color-background-surface1);
+  outline: 2px solid var(--color-background-surface2);
 }
 
 .badge-tyre.layered:first-child {
