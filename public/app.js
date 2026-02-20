@@ -577,7 +577,7 @@ function formatDelta(ms) {
 
 function formatGapAhead(ms) {
   if (ms == null) return '';
-  const sign = ms < 0 ? '−' : ''; // ahead should normally be positive, keep minus just in case
+  const sign = ms < 0 ? '−' : ms > 0 ? '+' : ''; // ahead should normally be positive, keep minus just in case
   const absSeconds = Math.abs(ms) / 1000;
   // 3 digits after dot, no leading zero padding for seconds
   return `${sign}${absSeconds.toFixed(3)}`;
@@ -804,6 +804,10 @@ function renderRaceTable(state) {
       // gap to car ahead
       tdGap.textContent = c.position === 1 ? '' : formatGapAhead(c.gapToCarAheadMs);
 
+      const tdLeader = document.createElement('td');
+      tdLeader.className = 'col-leader';
+      tdLeader.textContent = c.position === 1 ? '' : formatGapAhead(c.gapToLeaderMs);
+
       const tdDrv = document.createElement('td');
       tdDrv.className = 'col-status';
       const pitLabel = pitToLabel(c.pitStatus, c.pitLaneTimeMs);
@@ -850,6 +854,7 @@ function renderRaceTable(state) {
       tr.appendChild(tdName);
       tr.appendChild(tdLap);
       tr.appendChild(tdGap);
+      tr.appendChild(tdLeader);
       tr.appendChild(tdDrv);
       tr.appendChild(tdTyre);
       tr.appendChild(tdStops);

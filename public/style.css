@@ -23,6 +23,7 @@ body {
   --col-posdiff: 64px;
   --col-laptime: 86px;
   --col-ahead: 74px;
+  --col-leader: 82px;
   --col-tyre: 64px;
   --col-stops: 56px;
   --col-pit: 88px;
@@ -515,6 +516,10 @@ body {
 
 .col-ahead {
   width: var(--col-ahead);
+}
+
+.col-leader {
+  width: var(--col-leader);
 }
 
 .col-driver {
