@@ -22,14 +22,26 @@ const pageEl = document.querySelector('.page');
 const tabPersonalEl = document.getElementById('tab-personal');
 const tabRaceEl = document.getElementById('tab-race');
 const tabCarEl = document.getElementById('tab-car');
+const tabPedalsEl = document.getElementById('tab-pedals');
 const marshalRowEl = document.getElementById('marshal-row');
 const marshalBarEl = document.getElementById('marshal-bar');
+const pedalsChartEl = document.getElementById('pedals-chart');
+const pedalsStatusEl = document.getElementById('pedals-status');
+const pedalsToggleEl = document.getElementById('pedals-x-toggle');
+const pedalsCompareSelectEl = document.getElementById('pedals-compare-select');
+const pedalsThrottleChartEl = document.getElementById('pedals-chart-throttle');
+const pedalsBrakeChartEl = document.getElementById('pedals-chart-brake');
 
 // Кэши для фронтовой логики
 const racePosHistory = new Map(); // carIndex -> baseline position (первое увиденное)
 const raceTyreHistory = new Map(); // carIndex -> [{ label, cssClass, token }]
 
 let tyreMap = null;
+let pedalsChartThrottle = null;
+let pedalsChartBrake = null;
+let pedalsUsePercent = false;
+let lastState = null;
+let pedalsCompareCarIndex = '';
 
 async function loadTyreMap() {
   try {
@@ -45,11 +57,14 @@ function setActiveView(view) {
   if (!pageEl) return;
   const isRace = view === 'race';
   const isCar = view === 'car';
+  const isPedals = view === 'pedals';
   pageEl.classList.toggle('view-race', isRace);
   pageEl.classList.toggle('view-car', isCar);
+  pageEl.classList.toggle('view-pedals', isPedals);
   if (tabPersonalEl) tabPersonalEl.classList.toggle('is-active', view === 'personal');
   if (tabRaceEl) tabRaceEl.classList.toggle('is-active', view === 'race');
   if (tabCarEl) tabCarEl.classList.toggle('is-active', view === 'car');
+  if (tabPedalsEl) tabPedalsEl.classList.toggle('is-active', view === 'pedals');
 
   try {
     localStorage.setItem('laps_view', view);
@@ -385,6 +400,156 @@ function renderCarTab(state) {
   addSection('Temperatures', temps);
   addSection('Damage', damage);
   addSection('Misc', misc);
+}
+
+function ensureSplitCharts() {
+  if (!pedalsThrottleChartEl || !pedalsBrakeChartEl || typeof Chart === 'undefined') return;
+  if (!pedalsChartThrottle) {
+    pedalsChartThrottle = new Chart(pedalsThrottleChartEl, {
+      type: 'line',
+      data: { datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'nearest', intersect: false },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: 'Distance (m)' }, ticks: { autoSkip: true, maxTicksLimit: 8 } },
+          y: { min: 0, max: 1, title: { display: true, text: 'Throttle (0-1)' } }
+        },
+        plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 10 } }, tooltip: { enabled: true } },
+        elements: { point: { radius: 0 }, line: { tension: 0.1 } }
+      }
+    });
+  }
+  if (!pedalsChartBrake) {
+    pedalsChartBrake = new Chart(pedalsBrakeChartEl, {
+      type: 'line',
+      data: { datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'nearest', intersect: false },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: 'Distance (m)' }, ticks: { autoSkip: true, maxTicksLimit: 8 } },
+          y: { min: 0, max: 1, title: { display: true, text: 'Brake (0-1)' } }
+        },
+        plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 10 } }, tooltip: { enabled: true } },
+        elements: { point: { radius: 0 }, line: { tension: 0.1 } }
+      }
+    });
+  }
+}
+
+function buildPedalDataset(points, label, color, isBrake, usePercent, trackLength, dash) {
+  const data = Array.isArray(points)
+    ? points.map((p) => ({
+        x: usePercent && trackLength ? (p.x / trackLength) * 100 : p.x,
+        y: isBrake ? p.brake : p.throttle
+      }))
+    : [];
+  return {
+    label,
+    data,
+    borderColor: color,
+    backgroundColor: color,
+    cubicInterpolationMode: 'monotone',
+    borderDash: dash,
+    spanGaps: true,
+    borderWidth: 1,
+    pointRadius: 0
+  };
+}
+
+function renderPedals(state) {
+  lastState = state;
+  if (!pedalsThrottleChartEl || !pedalsBrakeChartEl || typeof Chart === 'undefined') {
+    if (pedalsStatusEl) pedalsStatusEl.textContent = 'Chart.js not loaded';
+    return;
+  }
+  ensureSplitCharts();
+
+  const ped = state.pedals;
+  const trackLength = ped?.trackLengthM ?? state.trackLengthM ?? null;
+  const others = Array.isArray(ped?.others) ? ped.others : [];
+  const currentPoints = ped?.current ?? [];
+  const previousPoints = ped?.previous?.points ?? [];
+  const bestPoints = ped?.best?.points ?? [];
+  const hasData = currentPoints.length || previousPoints.length || bestPoints.length;
+
+  if (pedalsStatusEl) {
+    pedalsStatusEl.textContent = hasData ? '' : 'Waiting for data…';
+  }
+
+  const usePercent = pedalsUsePercent && trackLength;
+  const maxX = usePercent ? 100 : trackLength || undefined;
+  if (pedalsChartThrottle?.options?.scales?.x) {
+    pedalsChartThrottle.options.scales.x.min = 0;
+    pedalsChartThrottle.options.scales.x.max = maxX;
+    pedalsChartThrottle.options.elements.line.borderWidth = 1;
+  }
+  if (pedalsChartBrake?.options?.scales?.x) {
+    pedalsChartBrake.options.scales.x.min = 0;
+    pedalsChartBrake.options.scales.x.max = maxX;
+    pedalsChartBrake.options.elements.line.borderWidth = 1;
+  }
+  const datasets = [];
+  datasets.push(
+    buildPedalDataset(currentPoints, 'Throttle — current', 'rgba(52, 152, 219, 1)', false, usePercent, trackLength, undefined),
+    buildPedalDataset(previousPoints, 'Throttle — previous', 'rgba(52, 152, 219, 0.45)', false, usePercent, trackLength, [8, 4]),
+    buildPedalDataset(bestPoints, 'Throttle — best', 'rgba(155, 89, 182, 1)', false, usePercent, trackLength, [4, 2])
+  );
+  datasets.push(
+    buildPedalDataset(currentPoints, 'Brake — current', 'rgba(230, 126, 34, 1)', true, usePercent, trackLength, undefined),
+    buildPedalDataset(previousPoints, 'Brake — previous', 'rgba(230, 126, 34, 0.45)', true, usePercent, trackLength, [8, 4]),
+    buildPedalDataset(bestPoints, 'Brake — best', 'rgba(231, 76, 60, 1)', true, usePercent, trackLength, [4, 2])
+  );
+
+  // Добавляем выбранного соперника (только текущий круг)
+  const selectedCompare =
+    pedalsCompareCarIndex === '' ? null : others.find((o) => String(o.carIndex) === String(pedalsCompareCarIndex));
+  if (selectedCompare) {
+    const labelSuffix = selectedCompare.name ? ` — ${selectedCompare.name}` : '';
+    const throttleColor = 'rgba(46, 204, 113, 0.9)';
+    const brakeColor = 'rgba(127, 140, 141, 0.9)';
+    datasets.push(
+      buildPedalDataset(
+        selectedCompare.points,
+        `Throttle${labelSuffix}`,
+        throttleColor,
+        false,
+        usePercent,
+        trackLength,
+        [6, 3]
+      )
+    );
+    datasets.push(
+      buildPedalDataset(
+        selectedCompare.points,
+        `Brake${labelSuffix}`,
+        brakeColor,
+        true,
+        usePercent,
+        trackLength,
+        [6, 3]
+      )
+    );
+  }
+  const throttleDatasets = datasets.filter((d) => d.label.toLowerCase().includes('throttle'));
+  const brakeDatasets = datasets.filter((d) => d.label.toLowerCase().includes('brake'));
+
+  if (pedalsChartThrottle && pedalsChartBrake) {
+    pedalsChartThrottle.data.datasets = hasData ? throttleDatasets : [];
+    pedalsChartThrottle.options.scales.x.title.text = usePercent ? 'Lap (%)' : 'Distance (m)';
+    pedalsChartThrottle.options.elements.line.borderWidth = 1;
+    pedalsChartThrottle.update('none');
+
+    pedalsChartBrake.data.datasets = hasData ? brakeDatasets : [];
+    pedalsChartBrake.options.scales.x.title.text = usePercent ? 'Lap (%)' : 'Distance (m)';
+    pedalsChartBrake.options.elements.line.borderWidth = 1;
+    pedalsChartBrake.update('none');
+  }
 }
 
 function formatTime(ms) {
@@ -779,6 +944,29 @@ function renderState(state) {
   const personalTyreStacks = buildPersonalTyreStacks(lapsAsc, state.currentLap);
   renderTyresSummary(state, personalTyreStacks, lapsAsc);
 
+  // Обновить список соперников для сравнения
+  if (pedalsCompareSelectEl) {
+    const currentVal = pedalsCompareCarIndex;
+    const options = Array.isArray(state.pedals?.others) ? state.pedals.others : [];
+    // rebuild options list
+    pedalsCompareSelectEl.innerHTML = '';
+    const optNone = document.createElement('option');
+    optNone.value = '';
+    optNone.textContent = 'None';
+    pedalsCompareSelectEl.appendChild(optNone);
+    options.forEach((o) => {
+      const opt = document.createElement('option');
+      opt.value = String(o.carIndex);
+      opt.textContent = o.name || `Car ${o.carIndex + 1}`;
+      pedalsCompareSelectEl.appendChild(opt);
+    });
+    // restore selection if still available
+    const hasCurrent =
+      currentVal !== '' && options.some((o) => String(o.carIndex) === String(currentVal));
+    pedalsCompareSelectEl.value = hasCurrent ? currentVal : '';
+    pedalsCompareCarIndex = pedalsCompareSelectEl.value;
+  }
+
   // Текущий круг (live) + завершенные круги (сверху самые новые)
   const lapsForRender = state.laps.slice().reverse();
   if (state.currentLap) {
@@ -889,6 +1077,7 @@ function renderState(state) {
 
   renderRaceTable(state);
   renderCarTab(state);
+  renderPedals(state);
 }
 
 function connect() {
@@ -917,7 +1106,15 @@ function connect() {
 if (tabPersonalEl) tabPersonalEl.onclick = () => setActiveView('personal');
 if (tabRaceEl) tabRaceEl.onclick = () => setActiveView('race');
 if (tabCarEl) tabCarEl.onclick = () => setActiveView('car');
-
+if (tabPedalsEl) tabPedalsEl.onclick = () => setActiveView('pedals');
+if (pedalsToggleEl) pedalsToggleEl.onchange = () => {
+  pedalsUsePercent = pedalsToggleEl.checked;
+  if (lastState) renderPedals(lastState);
+};
+if (pedalsCompareSelectEl) pedalsCompareSelectEl.onchange = () => {
+  pedalsCompareCarIndex = pedalsCompareSelectEl.value;
+  if (lastState) renderPedals(lastState);
+};
 setActiveView(getInitialView());
 
 loadTyreMap();
