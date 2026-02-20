@@ -168,15 +168,18 @@
               <input type="checkbox" id="pedals-x-toggle" />
               <span>Lap %</span>
             </label>
-            <div class="pedals-toggle-group">
-              <button class="pill-button is-active" id="pedals-throttle-toggle" type="button">Show throttle</button>
-              <button class="pill-button is-active" id="pedals-brake-toggle" type="button">Show brake</button>
-            </div>
+            <label class="pedals-select">
+              <span class="pedals-select-label">Compare:</span>
+              <select id="pedals-compare-select">
+                <option value="">None</option>
+              </select>
+            </label>
             <span class="pedals-status" id="pedals-status">Waiting for data…</span>
           </div>
         </div>
         <div class="pedals-chart-wrap">
-          <canvas id="pedals-chart" aria-label="Throttle/Brake chart" role="img"></canvas>
+          <canvas id="pedals-chart-throttle" aria-label="Throttle chart" role="img"></canvas>
+          <canvas id="pedals-chart-brake" aria-label="Brake chart" role="img"></canvas>
         </div>
       </section>
 

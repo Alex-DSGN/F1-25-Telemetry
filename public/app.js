@@ -28,19 +28,20 @@ const marshalBarEl = document.getElementById('marshal-bar');
 const pedalsChartEl = document.getElementById('pedals-chart');
 const pedalsStatusEl = document.getElementById('pedals-status');
 const pedalsToggleEl = document.getElementById('pedals-x-toggle');
-const pedalsThrottleToggleEl = document.getElementById('pedals-throttle-toggle');
-const pedalsBrakeToggleEl = document.getElementById('pedals-brake-toggle');
+const pedalsCompareSelectEl = document.getElementById('pedals-compare-select');
+const pedalsThrottleChartEl = document.getElementById('pedals-chart-throttle');
+const pedalsBrakeChartEl = document.getElementById('pedals-chart-brake');
 
 // Кэши для фронтовой логики
 const racePosHistory = new Map(); // carIndex -> baseline position (первое увиденное)
 const raceTyreHistory = new Map(); // carIndex -> [{ label, cssClass, token }]
 
 let tyreMap = null;
-let pedalsChart = null;
+let pedalsChartThrottle = null;
+let pedalsChartBrake = null;
 let pedalsUsePercent = false;
 let lastState = null;
-let pedalsShowThrottle = true;
-let pedalsShowBrake = true;
+let pedalsCompareCarIndex = '';
 
 async function loadTyreMap() {
   try {
@@ -401,50 +402,44 @@ function renderCarTab(state) {
   addSection('Misc', misc);
 }
 
-function ensurePedalsChart() {
-  if (pedalsChart || !pedalsChartEl || typeof Chart === 'undefined') return;
-  pedalsChart = new Chart(pedalsChartEl, {
-    type: 'line',
-    data: { datasets: [] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      interaction: { mode: 'nearest', intersect: false },
-      scales: {
-        x: {
-          type: 'linear',
-          title: { display: true, text: 'Distance (m)' },
-          ticks: { autoSkip: true, maxTicksLimit: 8 }
+function ensureSplitCharts() {
+  if (!pedalsThrottleChartEl || !pedalsBrakeChartEl || typeof Chart === 'undefined') return;
+  if (!pedalsChartThrottle) {
+    pedalsChartThrottle = new Chart(pedalsThrottleChartEl, {
+      type: 'line',
+      data: { datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'nearest', intersect: false },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: 'Distance (m)' }, ticks: { autoSkip: true, maxTicksLimit: 8 } },
+          y: { min: 0, max: 1, title: { display: true, text: 'Throttle (0-1)' } }
         },
-        y: {
-          min: 0,
-          max: 1,
-          title: { display: true, text: 'Input (0-1)' }
-        }
-      },
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: { usePointStyle: true, boxWidth: 10 }
-        },
-        tooltip: {
-          callbacks: {
-            title: (items) => {
-              if (!items?.length) return '';
-              const v = items[0].parsed.x;
-              return pedalsUsePercent ? `${v.toFixed(1)}%` : `${v.toFixed(1)} m`;
-            },
-            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)}`
-          }
-        }
-      },
-      elements: {
-        point: { radius: 0 },
-        line: { tension: 0.1 }
+        plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 10 } }, tooltip: { enabled: true } },
+        elements: { point: { radius: 0 }, line: { tension: 0.1 } }
       }
-    }
-  });
+    });
+  }
+  if (!pedalsChartBrake) {
+    pedalsChartBrake = new Chart(pedalsBrakeChartEl, {
+      type: 'line',
+      data: { datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'nearest', intersect: false },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: 'Distance (m)' }, ticks: { autoSkip: true, maxTicksLimit: 8 } },
+          y: { min: 0, max: 1, title: { display: true, text: 'Brake (0-1)' } }
+        },
+        plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 10 } }, tooltip: { enabled: true } },
+        elements: { point: { radius: 0 }, line: { tension: 0.1 } }
+      }
+    });
+  }
 }
 
 function buildPedalDataset(points, label, color, isBrake, usePercent, trackLength, dash) {
@@ -461,19 +456,23 @@ function buildPedalDataset(points, label, color, isBrake, usePercent, trackLengt
     backgroundColor: color,
     cubicInterpolationMode: 'monotone',
     borderDash: dash,
-    spanGaps: true
+    spanGaps: true,
+    borderWidth: 1,
+    pointRadius: 0
   };
 }
 
 function renderPedals(state) {
   lastState = state;
-  if (!pedalsChartEl || typeof Chart === 'undefined') {
+  if (!pedalsThrottleChartEl || !pedalsBrakeChartEl || typeof Chart === 'undefined') {
     if (pedalsStatusEl) pedalsStatusEl.textContent = 'Chart.js not loaded';
     return;
   }
+  ensureSplitCharts();
 
   const ped = state.pedals;
   const trackLength = ped?.trackLengthM ?? state.trackLengthM ?? null;
+  const others = Array.isArray(ped?.others) ? ped.others : [];
   const currentPoints = ped?.current ?? [];
   const previousPoints = ped?.previous?.points ?? [];
   const bestPoints = ped?.best?.points ?? [];
@@ -483,41 +482,74 @@ function renderPedals(state) {
     pedalsStatusEl.textContent = hasData ? '' : 'Waiting for data…';
   }
 
-  if (!hasData) {
-    if (pedalsChart) {
-      pedalsChart.data.datasets = [];
-      pedalsChart.update('none');
-    }
-    return;
-  }
-
-  ensurePedalsChart();
-  if (!pedalsChart) return;
-
   const usePercent = pedalsUsePercent && trackLength;
   const maxX = usePercent ? 100 : trackLength || undefined;
-  if (pedalsChart.options?.scales?.x) {
-    pedalsChart.options.scales.x.min = 0;
-    pedalsChart.options.scales.x.max = maxX;
+  if (pedalsChartThrottle?.options?.scales?.x) {
+    pedalsChartThrottle.options.scales.x.min = 0;
+    pedalsChartThrottle.options.scales.x.max = maxX;
+    pedalsChartThrottle.options.elements.line.borderWidth = 1;
+  }
+  if (pedalsChartBrake?.options?.scales?.x) {
+    pedalsChartBrake.options.scales.x.min = 0;
+    pedalsChartBrake.options.scales.x.max = maxX;
+    pedalsChartBrake.options.elements.line.borderWidth = 1;
   }
   const datasets = [];
-  if (pedalsShowThrottle) {
+  datasets.push(
+    buildPedalDataset(currentPoints, 'Throttle — current', 'rgba(52, 152, 219, 1)', false, usePercent, trackLength, undefined),
+    buildPedalDataset(previousPoints, 'Throttle — previous', 'rgba(52, 152, 219, 0.45)', false, usePercent, trackLength, [8, 4]),
+    buildPedalDataset(bestPoints, 'Throttle — best', 'rgba(155, 89, 182, 1)', false, usePercent, trackLength, [4, 2])
+  );
+  datasets.push(
+    buildPedalDataset(currentPoints, 'Brake — current', 'rgba(230, 126, 34, 1)', true, usePercent, trackLength, undefined),
+    buildPedalDataset(previousPoints, 'Brake — previous', 'rgba(230, 126, 34, 0.45)', true, usePercent, trackLength, [8, 4]),
+    buildPedalDataset(bestPoints, 'Brake — best', 'rgba(231, 76, 60, 1)', true, usePercent, trackLength, [4, 2])
+  );
+
+  // Добавляем выбранного соперника (только текущий круг)
+  const selectedCompare =
+    pedalsCompareCarIndex === '' ? null : others.find((o) => String(o.carIndex) === String(pedalsCompareCarIndex));
+  if (selectedCompare) {
+    const labelSuffix = selectedCompare.name ? ` — ${selectedCompare.name}` : '';
+    const throttleColor = 'rgba(46, 204, 113, 0.9)';
+    const brakeColor = 'rgba(127, 140, 141, 0.9)';
     datasets.push(
-      buildPedalDataset(currentPoints, 'Throttle — current', 'rgba(52, 152, 219, 1)', false, usePercent, trackLength, undefined),
-      buildPedalDataset(previousPoints, 'Throttle — previous', 'rgba(52, 152, 219, 0.45)', false, usePercent, trackLength, [8, 4]),
-      buildPedalDataset(bestPoints, 'Throttle — best', 'rgba(155, 89, 182, 1)', false, usePercent, trackLength, [4, 2])
+      buildPedalDataset(
+        selectedCompare.points,
+        `Throttle${labelSuffix}`,
+        throttleColor,
+        false,
+        usePercent,
+        trackLength,
+        [6, 3]
+      )
+    );
+    datasets.push(
+      buildPedalDataset(
+        selectedCompare.points,
+        `Brake${labelSuffix}`,
+        brakeColor,
+        true,
+        usePercent,
+        trackLength,
+        [6, 3]
+      )
     );
   }
-  if (pedalsShowBrake) {
-    datasets.push(
-      buildPedalDataset(currentPoints, 'Brake — current', 'rgba(230, 126, 34, 1)', true, usePercent, trackLength, undefined),
-      buildPedalDataset(previousPoints, 'Brake — previous', 'rgba(230, 126, 34, 0.45)', true, usePercent, trackLength, [8, 4]),
-      buildPedalDataset(bestPoints, 'Brake — best', 'rgba(231, 76, 60, 1)', true, usePercent, trackLength, [4, 2])
-    );
+  const throttleDatasets = datasets.filter((d) => d.label.toLowerCase().includes('throttle'));
+  const brakeDatasets = datasets.filter((d) => d.label.toLowerCase().includes('brake'));
+
+  if (pedalsChartThrottle && pedalsChartBrake) {
+    pedalsChartThrottle.data.datasets = hasData ? throttleDatasets : [];
+    pedalsChartThrottle.options.scales.x.title.text = usePercent ? 'Lap (%)' : 'Distance (m)';
+    pedalsChartThrottle.options.elements.line.borderWidth = 1;
+    pedalsChartThrottle.update('none');
+
+    pedalsChartBrake.data.datasets = hasData ? brakeDatasets : [];
+    pedalsChartBrake.options.scales.x.title.text = usePercent ? 'Lap (%)' : 'Distance (m)';
+    pedalsChartBrake.options.elements.line.borderWidth = 1;
+    pedalsChartBrake.update('none');
   }
-  pedalsChart.data.datasets = datasets;
-  pedalsChart.options.scales.x.title.text = usePercent ? 'Lap (%)' : 'Distance (m)';
-  pedalsChart.update('none');
 }
 
 function formatTime(ms) {
@@ -912,6 +944,29 @@ function renderState(state) {
   const personalTyreStacks = buildPersonalTyreStacks(lapsAsc, state.currentLap);
   renderTyresSummary(state, personalTyreStacks, lapsAsc);
 
+  // Обновить список соперников для сравнения
+  if (pedalsCompareSelectEl) {
+    const currentVal = pedalsCompareCarIndex;
+    const options = Array.isArray(state.pedals?.others) ? state.pedals.others : [];
+    // rebuild options list
+    pedalsCompareSelectEl.innerHTML = '';
+    const optNone = document.createElement('option');
+    optNone.value = '';
+    optNone.textContent = 'None';
+    pedalsCompareSelectEl.appendChild(optNone);
+    options.forEach((o) => {
+      const opt = document.createElement('option');
+      opt.value = String(o.carIndex);
+      opt.textContent = o.name || `Car ${o.carIndex + 1}`;
+      pedalsCompareSelectEl.appendChild(opt);
+    });
+    // restore selection if still available
+    const hasCurrent =
+      currentVal !== '' && options.some((o) => String(o.carIndex) === String(currentVal));
+    pedalsCompareSelectEl.value = hasCurrent ? currentVal : '';
+    pedalsCompareCarIndex = pedalsCompareSelectEl.value;
+  }
+
   // Текущий круг (live) + завершенные круги (сверху самые новые)
   const lapsForRender = state.laps.slice().reverse();
   if (state.currentLap) {
@@ -1056,17 +1111,10 @@ if (pedalsToggleEl) pedalsToggleEl.onchange = () => {
   pedalsUsePercent = pedalsToggleEl.checked;
   if (lastState) renderPedals(lastState);
 };
-if (pedalsThrottleToggleEl) pedalsThrottleToggleEl.onclick = () => {
-  pedalsShowThrottle = !pedalsShowThrottle;
-  pedalsThrottleToggleEl.classList.toggle('is-active', pedalsShowThrottle);
+if (pedalsCompareSelectEl) pedalsCompareSelectEl.onchange = () => {
+  pedalsCompareCarIndex = pedalsCompareSelectEl.value;
   if (lastState) renderPedals(lastState);
 };
-if (pedalsBrakeToggleEl) pedalsBrakeToggleEl.onclick = () => {
-  pedalsShowBrake = !pedalsShowBrake;
-  pedalsBrakeToggleEl.classList.toggle('is-active', pedalsShowBrake);
-  if (lastState) renderPedals(lastState);
-};
-
 setActiveView(getInitialView());
 
 loadTyreMap();

@@ -126,6 +126,8 @@ const pedalState = {
   lastDistanceM: null,
   lastTimestampMs: null
 };
+// Педали по всем машинам (только текущий круг для сравнения)
+const pedalPerCar = new Map(); // carIndex -> { currentLapNumber, current: [{x, throttle, brake}], lastDistanceM, lastTimestampMs }
 
 // Итоговые значения pit-lane по кругу (привязка к кругу въезда)
 const pitLaneTimeByLap = new Map(); // lapNumber -> ms
@@ -562,7 +564,8 @@ function startDemoFeed() {
         currentLapNumber: pedalDemo.currentLapNumber,
         current: pedalDemo.current,
         previous: pedalDemo.previous,
-        best: pedalDemo.best
+        best: pedalDemo.best,
+        others: []
       }
     };
 
@@ -581,13 +584,15 @@ function resetPedals() {
   pedalState.best = null;
   pedalState.lastDistanceM = null;
   pedalState.lastTimestampMs = null;
+  pedalPerCar.clear();
 
   lapsState.pedals = {
     trackLengthM: lapsState.trackLengthM ?? null,
     currentLapNumber: null,
     current: [],
     previous: null,
-    best: null
+    best: null,
+    others: []
   };
 }
 
@@ -1216,11 +1221,25 @@ function syncPedalsState() {
   lapsState.pedals.current = pedalState.current;
   lapsState.pedals.previous = pedalState.previous;
   lapsState.pedals.best = pedalState.best;
+  lapsState.pedals.others = Array.from(pedalPerCar.entries())
+    .map(([carIndex, entry]) => {
+      if (!entry || !entry.current?.length) return null;
+      const name = participantsNameByIndex.get(carIndex) || `Car ${carIndex + 1}`;
+      const teamColour = participantsColorByIndex.get(carIndex) || null;
+      return {
+        carIndex,
+        name,
+        teamColour,
+        lapNumber: entry.currentLapNumber,
+        points: entry.current
+      };
+    })
+    .filter(Boolean);
 }
 
-function maybeRecordPedalPoint(playerCarIndex) {
-  const tel = carTelemetryByIndex.get(playerCarIndex);
-  const lap = lapDataByIndex.get(playerCarIndex);
+function recordPedalsForCar(carIndex, isPlayer) {
+  const tel = carTelemetryByIndex.get(carIndex);
+  const lap = lapDataByIndex.get(carIndex);
   if (!tel || !lap) return;
 
   const { lapDistance, currentLapNum } = lap;
@@ -1230,30 +1249,56 @@ function maybeRecordPedalPoint(playerCarIndex) {
   const brake = Number.isFinite(tel.brake) ? tel.brake : null;
   if (throttle == null && brake == null) return;
 
-  if (pedalState.currentLapNumber == null) {
-    pedalState.currentLapNumber = currentLapNum;
-  } else if (currentLapNum !== pedalState.currentLapNumber) {
-    // Лапдата ещё не финализировала круг (в норме финализируется в handleLapData),
-    // но чтобы не смешивать точки разных кругов — сбросим буфер.
-    pedalState.current = [];
-    pedalState.currentLapNumber = currentLapNum;
-    pedalState.lastDistanceM = null;
-    pedalState.lastTimestampMs = null;
+  if (isPlayer) {
+    if (pedalState.currentLapNumber == null) {
+      pedalState.currentLapNumber = currentLapNum;
+    } else if (currentLapNum !== pedalState.currentLapNumber) {
+      pedalState.current = [];
+      pedalState.currentLapNumber = currentLapNum;
+      pedalState.lastDistanceM = null;
+      pedalState.lastTimestampMs = null;
+    }
+
+    const now = Date.now();
+    const needByDistance =
+      pedalState.lastDistanceM == null || lapDistance - pedalState.lastDistanceM >= PEDAL_DISTANCE_STEP;
+    const needByTime = pedalState.lastTimestampMs == null || now - pedalState.lastTimestampMs >= PEDAL_TIME_STEP_MS;
+    if (!needByDistance && !needByTime) return;
+
+    pedalState.current.push({
+      x: lapDistance,
+      throttle: throttle ?? 0,
+      brake: brake ?? 0
+    });
+    pedalState.lastDistanceM = lapDistance;
+    pedalState.lastTimestampMs = now;
+  } else {
+    let entry = pedalPerCar.get(carIndex);
+    if (!entry || entry.currentLapNumber !== currentLapNum) {
+      entry = {
+        currentLapNumber: currentLapNum,
+        current: [],
+        lastDistanceM: null,
+        lastTimestampMs: null
+      };
+      pedalPerCar.set(carIndex, entry);
+    }
+
+    const now = Date.now();
+    const needByDistance =
+      entry.lastDistanceM == null || lapDistance - entry.lastDistanceM >= PEDAL_DISTANCE_STEP;
+    const needByTime = entry.lastTimestampMs == null || now - entry.lastTimestampMs >= PEDAL_TIME_STEP_MS;
+    if (!needByDistance && !needByTime) return;
+
+    entry.current.push({
+      x: lapDistance,
+      throttle: throttle ?? 0,
+      brake: brake ?? 0
+    });
+    entry.lastDistanceM = lapDistance;
+    entry.lastTimestampMs = now;
+    pedalPerCar.set(carIndex, entry);
   }
-
-  const now = Date.now();
-  const needByDistance =
-    pedalState.lastDistanceM == null || lapDistance - pedalState.lastDistanceM >= PEDAL_DISTANCE_STEP;
-  const needByTime = pedalState.lastTimestampMs == null || now - pedalState.lastTimestampMs >= PEDAL_TIME_STEP_MS;
-  if (!needByDistance && !needByTime) return;
-
-  pedalState.current.push({
-    x: lapDistance,
-    throttle: throttle ?? 0,
-    brake: brake ?? 0
-  });
-  pedalState.lastDistanceM = lapDistance;
-  pedalState.lastTimestampMs = now;
 
   syncPedalsState();
 }
@@ -1302,7 +1347,11 @@ function handleCarTelemetryPacket(buf) {
     if (t) {
       lapsState.currentCarTelemetry = t;
     }
-    maybeRecordPedalPoint(playerCarIndex);
+  }
+
+  // Запишем педали для всех машин (для игрока – с previous/best, для остальных – только текущий круг)
+  for (let i = 0; i < NUM_CARS; i++) {
+    recordPedalsForCar(i, i === playerCarIndex);
   }
 }
 
