@@ -9,6 +9,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&display=swap"
     />
     <link rel="stylesheet" href="/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   </head>
   <body>
     <main class="page">
@@ -94,6 +95,7 @@
       <div class="tabs" id="tables-tabs">
         <button class="tab is-active" id="tab-race" type="button">Race</button>
         <button class="tab" id="tab-personal" type="button">Personal</button>
+        <button class="tab" id="tab-pedals" type="button">Charts</button>
         <button class="tab" id="tab-car" type="button">Car</button>
       </div>
 
@@ -155,6 +157,26 @@
               <!-- Rows will be filled by app.js -->
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="table-section table-pedals" id="table-pedals">
+        <div class="table-header table-header-pedals">
+          <div class="table-title">Charts</div>
+          <div class="pedals-controls">
+            <label class="pedals-toggle">
+              <input type="checkbox" id="pedals-x-toggle" />
+              <span>Lap %</span>
+            </label>
+            <div class="pedals-toggle-group">
+              <button class="pill-button is-active" id="pedals-throttle-toggle" type="button">Show throttle</button>
+              <button class="pill-button is-active" id="pedals-brake-toggle" type="button">Show brake</button>
+            </div>
+            <span class="pedals-status" id="pedals-status">Waiting for data…</span>
+          </div>
+        </div>
+        <div class="pedals-chart-wrap">
+          <canvas id="pedals-chart" aria-label="Throttle/Brake chart" role="img"></canvas>
         </div>
       </section>
 

@@ -54,7 +54,14 @@ let lapsState = {
   isConnected: false,
   laps: [], // { lapNumber, lapTimeMs, deltaMs, valid, isBest, sector1TimeMs, sector2TimeMs, sector3TimeMs }
   marshallingZones: [], // { zoneStart, zoneFlag }
-  safetyCarStatus: 0 // 0 = none, 1 = SC, 2 = VSC, 3 = formation
+  safetyCarStatus: 0, // 0 = none, 1 = SC, 2 = VSC, 3 = formation
+  pedals: {
+    trackLengthM: null,
+    currentLapNumber: null,
+    current: [],
+    previous: null,
+    best: null
+  }
 };
 
 // Внутреннее состояние игрока, используемое для фиксации завершения круга и валидности данных
@@ -93,6 +100,8 @@ const CAR_TELEMETRY_DATA_SIZE = 60; // (1352 - 29 - 3) / 22 = 60
 const PARTICIPANT_DATA_SIZE = 57; // (1284 - 29 - 1) / 22 = 57 (см. Participants - 1284 bytes)
 const LAP_HISTORY_DATA_SIZE = 14; // Session History LapHistoryData size
 const CAR_DAMAGE_DATA_SIZE = 46; // (1041 - 29) / 22 = 46
+const PEDAL_DISTANCE_STEP = 5; // метры для децимации точек педалей
+const PEDAL_TIME_STEP_MS = 80; // минимальный шаг по времени между точками
 
 // Переменные из пакета Participants
 let numActiveCars = null; // from PacketParticipantsData.m_numActiveCars
@@ -107,6 +116,16 @@ let raceBestSector3CarIndex = null;
 let raceBestLapTimeMs = null;
 let raceBestLapCarIndex = null;
 let raceBestLapNum = null;
+
+// Педали игрока (для графика)
+const pedalState = {
+  currentLapNumber: null,
+  current: [], // { x: distanceM, throttle, brake }
+  previous: null, // { lapNumber, points }
+  best: null, // { lapNumber, points }
+  lastDistanceM: null,
+  lastTimestampMs: null
+};
 
 // Итоговые значения pit-lane по кругу (привязка к кругу въезда)
 const pitLaneTimeByLap = new Map(); // lapNumber -> ms
@@ -232,6 +251,14 @@ function startDemoFeed() {
   });
 
   const personalLaps = [];
+  const pedalDemo = {
+    current: [],
+    previous: null,
+    best: null,
+    currentLapNumber: 1,
+    lastDistanceM: null,
+    lastTimestampMs: null
+  };
 
   const computePersonalBest = (laps) => {
     let bestLapTimeMs = null;
@@ -292,6 +319,21 @@ function startDemoFeed() {
             pitLaneTimeMs: null,
             numPitStops: c.stops
           });
+
+          if (pedalDemo.current.length) {
+            pedalDemo.previous = {
+              lapNumber: c.lapNumber - 1,
+              points: pedalDemo.current.slice()
+            };
+            const pb = computePersonalBest(personalLaps);
+            if (pb.bestLapNumber === c.lapNumber - 1) {
+              pedalDemo.best = pedalDemo.previous;
+            }
+          }
+          pedalDemo.current = [];
+          pedalDemo.currentLapNumber = c.lapNumber;
+          pedalDemo.lastDistanceM = null;
+          pedalDemo.lastTimestampMs = null;
         }
       }
     }
@@ -391,6 +433,23 @@ function startDemoFeed() {
 
     const lapsForUi = personalLaps.slice(-50);
 
+    if (you) {
+      const throttleVal = Math.max(0, Math.min(1, 0.6 + 0.35 * Math.sin(t / 600)));
+      const brakeVal = Math.max(0, Math.min(1, 0.35 * Math.max(0, Math.sin((t + 900) / 500))));
+      const needByDist =
+        pedalDemo.lastDistanceM == null || you.lapDistance - pedalDemo.lastDistanceM >= PEDAL_DISTANCE_STEP;
+      const needByTime = pedalDemo.lastTimestampMs == null || t - pedalDemo.lastTimestampMs >= PEDAL_TIME_STEP_MS;
+      if (needByDist || needByTime) {
+        pedalDemo.current.push({
+          x: you.lapDistance,
+          throttle: throttleVal,
+          brake: brakeVal
+        });
+        pedalDemo.lastDistanceM = you.lapDistance;
+        pedalDemo.lastTimestampMs = t;
+      }
+    }
+
     lapsState = {
       ...lapsState,
       isConnected: true,
@@ -463,9 +522,9 @@ function startDemoFeed() {
       })(),
       currentCarTelemetry: {
         speedKph: you ? Math.max(0, Math.round((you.baseSpeed * 3.6) + (Math.sin(t / 500) * 5))) : 0,
-        throttle: 0.85,
+        throttle: you ? Math.max(0, Math.min(1, 0.6 + 0.35 * Math.sin(t / 600))) : 0,
         steer: 0.0,
-        brake: 0.0,
+        brake: you ? Math.max(0, Math.min(1, 0.35 * Math.max(0, Math.sin((t + 900) / 500)))) : 0,
         clutch: 0,
         gear: 7,
         engineRPM: 10500,
@@ -497,7 +556,14 @@ function startDemoFeed() {
       raceBestSector3CarIndex: raceBestS3CarIndex,
       raceBestLapTimeMs,
       raceBestLapCarIndex,
-      raceBestLapNum: raceBestLapNumLocal
+      raceBestLapNum: raceBestLapNumLocal,
+      pedals: {
+        trackLengthM,
+        currentLapNumber: pedalDemo.currentLapNumber,
+        current: pedalDemo.current,
+        previous: pedalDemo.previous,
+        best: pedalDemo.best
+      }
     };
 
     broadcastState();
@@ -506,6 +572,23 @@ function startDemoFeed() {
   // мгновенно отрисовать стартовое состояние
   tick();
   setInterval(tick, 200);
+}
+
+function resetPedals() {
+  pedalState.currentLapNumber = null;
+  pedalState.current = [];
+  pedalState.previous = null;
+  pedalState.best = null;
+  pedalState.lastDistanceM = null;
+  pedalState.lastTimestampMs = null;
+
+  lapsState.pedals = {
+    trackLengthM: lapsState.trackLengthM ?? null,
+    currentLapNumber: null,
+    current: [],
+    previous: null,
+    best: null
+  };
 }
 
 function resetSessionState(sessionUID) {
@@ -586,8 +669,17 @@ function resetSessionState(sessionUID) {
     currentCarTelemetry: null,
     currentPenalties: null,
     currentCarDamage: null,
-    marshallingZones: []
+    marshallingZones: [],
+    pedals: {
+      trackLengthM: null,
+      currentLapNumber: null,
+      current: [],
+      previous: null,
+      best: null
+    }
   };
+
+  resetPedals();
 }
 
 // Разбор заголовка пакета и извлечение packetId, sessionUID, playerCarIndex
@@ -1118,6 +1210,76 @@ function parseCarDamageForCar(buf, baseOffset) {
   };
 }
 
+function syncPedalsState() {
+  lapsState.pedals.trackLengthM = lapsState.trackLengthM ?? null;
+  lapsState.pedals.currentLapNumber = pedalState.currentLapNumber;
+  lapsState.pedals.current = pedalState.current;
+  lapsState.pedals.previous = pedalState.previous;
+  lapsState.pedals.best = pedalState.best;
+}
+
+function maybeRecordPedalPoint(playerCarIndex) {
+  const tel = carTelemetryByIndex.get(playerCarIndex);
+  const lap = lapDataByIndex.get(playerCarIndex);
+  if (!tel || !lap) return;
+
+  const { lapDistance, currentLapNum } = lap;
+  if (!Number.isFinite(lapDistance) || lapDistance < 0) return;
+
+  const throttle = Number.isFinite(tel.throttle) ? tel.throttle : null;
+  const brake = Number.isFinite(tel.brake) ? tel.brake : null;
+  if (throttle == null && brake == null) return;
+
+  if (pedalState.currentLapNumber == null) {
+    pedalState.currentLapNumber = currentLapNum;
+  } else if (currentLapNum !== pedalState.currentLapNumber) {
+    // Лапдата ещё не финализировала круг (в норме финализируется в handleLapData),
+    // но чтобы не смешивать точки разных кругов — сбросим буфер.
+    pedalState.current = [];
+    pedalState.currentLapNumber = currentLapNum;
+    pedalState.lastDistanceM = null;
+    pedalState.lastTimestampMs = null;
+  }
+
+  const now = Date.now();
+  const needByDistance =
+    pedalState.lastDistanceM == null || lapDistance - pedalState.lastDistanceM >= PEDAL_DISTANCE_STEP;
+  const needByTime = pedalState.lastTimestampMs == null || now - pedalState.lastTimestampMs >= PEDAL_TIME_STEP_MS;
+  if (!needByDistance && !needByTime) return;
+
+  pedalState.current.push({
+    x: lapDistance,
+    throttle: throttle ?? 0,
+    brake: brake ?? 0
+  });
+  pedalState.lastDistanceM = lapDistance;
+  pedalState.lastTimestampMs = now;
+
+  syncPedalsState();
+}
+
+function finalizePedalLap(finishedLapNum) {
+  if (pedalState.current.length) {
+    pedalState.previous = {
+      lapNumber: finishedLapNum,
+      points: pedalState.current.slice()
+    };
+  }
+
+  if (lapsState.bestLapNumber != null && lapsState.bestLapNumber === finishedLapNum && pedalState.current.length) {
+    pedalState.best = {
+      lapNumber: finishedLapNum,
+      points: pedalState.current.slice()
+    };
+  }
+
+  pedalState.current = [];
+  pedalState.currentLapNumber = null;
+  pedalState.lastDistanceM = null;
+  pedalState.lastTimestampMs = null;
+  syncPedalsState();
+}
+
 function handleCarTelemetryPacket(buf) {
   const header = parseHeader(buf);
   if (!header) return;
@@ -1140,6 +1302,7 @@ function handleCarTelemetryPacket(buf) {
     if (t) {
       lapsState.currentCarTelemetry = t;
     }
+    maybeRecordPedalPoint(playerCarIndex);
   }
 }
 
@@ -1227,6 +1390,7 @@ function handleSessionPacket(buf) {
   lapsState.pitSpeedLimitKph = pitSpeedLimitKph;
   lapsState.marshallingZones = marshallingZones;
   lapsState.safetyCarStatus = safetyCarStatus;
+  lapsState.pedals.trackLengthM = trackLengthM ?? lapsState.pedals.trackLengthM ?? null;
 
   // Determine session kind using m_sessionType (more reliable than totalLaps).
   // Values are consistent with recent F1 UDP specs:
@@ -1577,6 +1741,7 @@ function handleLapDataPacket(buf) {
     playerState.pitLanePitStatusMax = 0;
 
     recomputeFromLaps();
+    resetPedals();
   }
 
   // Зафиксировать шины на начале круга (только первый раз, когда увидели этот lapNum)
@@ -1743,6 +1908,8 @@ function handleLapDataPacket(buf) {
 
     lapsByNumber.set(finishedLapNum, lapEntry);
     recomputeFromLaps();
+
+    finalizePedalLap(finishedLapNum);
 
     // После фиксации круга очищаем кэш секторов для нового круга
     playerState.currentSector1TimeMs = null;
